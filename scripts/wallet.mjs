@@ -90,7 +90,7 @@ async function loginStart() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       clientId: "spongewallet-skill",
-      scope: "wallet:read wallet:write transaction:sign",
+      scope: "wallet:read wallet:write transaction:sign transaction:write",
     }),
   });
 
