@@ -5,7 +5,7 @@ description: Manages crypto wallets, transfers tokens, swaps on DEXes, checks ba
 
 # Sponge Wallet Skill
 
-Multi-chain crypto wallet with transfers, swaps, and paid API access.
+Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero dependencies.
 
 ## Authentication
 
