@@ -388,8 +388,9 @@ async function callTool(apiKey, tool, toolArgs = {}) {
           currency: toolArgs.currency,
         },
       });
-    case "sponge":
-      return apiRequest(apiKey, "POST", "/api/sponge", { body: toolArgs });
+    // DISABLED: Sponge tool temporarily disabled
+    // case "sponge":
+    //   return apiRequest(apiKey, "POST", "/api/sponge", { body: toolArgs });
     case "create_x402_payment":
       return apiRequest(apiKey, "POST", "/api/x402/payments", {
         body: {
