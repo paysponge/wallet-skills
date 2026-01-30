@@ -1,11 +1,11 @@
 ---
 name: sponge-wallet
-description: Manages crypto wallets, transfers tokens, swaps on DEXes, checks balances, and accesses paid APIs (search, image gen, prediction markets, web scraping, document parsing, sales prospecting) via x402 micropayments. Use when the user asks about wallet balances, token transfers, swaps, blockchain payments, or paid API services.
+description: Manages crypto wallets, transfers tokens, swaps on DEXes, and checks balances. Use when the user asks about wallet balances, token transfers, swaps, or blockchain payments.
 ---
 
 # Sponge Wallet Skill
 
-Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero dependencies — just Node.js 18+.
+Multi-chain crypto wallet with transfers and swaps. Zero dependencies — just Node.js 18+.
 
 ## CRITICAL: Always Run `whoami` First
 
@@ -123,12 +123,14 @@ Output is JSON with `status: "success"` or `status: "error"`.
 | `request_funding` | Request funds from owner | `amount`, `chain`, `currency` | — |
 | `withdraw_to_main_wallet` | Return funds to owner | `chain`, `amount` | `currency` |
 
+<!-- Paid APIs (Sponge x402) - temporarily disabled
 ### Paid APIs (Sponge x402)
 
 | Tool | Description | Required | Optional |
 |------|-------------|----------|----------|
 | `sponge` | Unified paid API interface | `task` | See [REFERENCE.md](REFERENCE.md) |
 | `create_x402_payment` | Create x402 payment payload | `chain`, `to`, `amount` | `token`, `decimals` |
+-->
 
 ## Chain Reference
 
@@ -171,6 +173,7 @@ node wallet.mjs search_solana_tokens '{"query":"BONK"}'
 node wallet.mjs solana_swap '{"chain":"solana","input_token":"SOL","output_token":"BONK","amount":"0.5"}'
 ```
 
+<!-- Sponge Paid APIs - temporarily disabled
 ### Sponge Paid APIs
 
 ```bash
@@ -181,6 +184,7 @@ node wallet.mjs sponge '{"task":"crawl","url":"https://example.com"}'
 node wallet.mjs sponge '{"task":"parse","document_url":"https://example.com/doc.pdf"}'
 node wallet.mjs sponge '{"task":"prospect","apollo_query":"Stripe","apollo_endpoint":"companies"}'
 ```
+-->
 
 ## Error Handling
 
