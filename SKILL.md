@@ -7,6 +7,18 @@ description: Manages crypto wallets, transfers tokens, swaps on DEXes, checks ba
 
 Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero dependencies — just Node.js 18+.
 
+## IMPORTANT: Check Authentication First
+
+**Before using any wallet tool**, always run `whoami` to check auth status:
+
+```bash
+node <skill-path>/scripts/wallet.mjs whoami
+```
+
+If you see "Not authenticated", you need to register:
+1. If you're a **new agent without an account** → Use the **register** flow below
+2. If you **already have an account** → Use the **login** flow
+
 ## Getting Started (New Agents)
 
 If you're an AI agent without an account, use the **register** flow to get set up:
@@ -20,16 +32,16 @@ This returns a `claim_url` to send to your human owner:
 ```json
 {
   "status": "registration_pending",
-  "claim_url": "https://wallet.paysponge.com/device?code=ABCD-1234",
+  "claim_url": "https://wallet.staging.paysponge.com/device?code=ABCD-1234",
   "claim_code": "ABCD-1234",
-  "claim_text": "I just claimed my AI agent on @sponge_wallet: ABCD-1234",
+  "claim_text": "I just claimed a wallet for my agent and got 1 free USDC on @sponge_wallet: ABCD-1234",
   "device_code": "xxx..."
 }
 ```
 
 **Step 2** — Send the `claim_url` to your human owner. They will:
-1. Open the URL and log in
-2. Optionally tweet the `claim_text` to receive **$1 USDC free**
+1. Open the URL and log in (email, wallet, Google, or GitHub)
+2. Optionally post a tweet with the `claim_text` to receive **$1 USDC free** on Solana
 3. Approve the agent
 
 **Step 3** — Poll for completion:
@@ -124,15 +136,19 @@ Output is JSON with `status: "success"` or `status: "error"`.
 ### New Agent Registration
 
 ```bash
-# Step 1: Register and get claim URL
+# Step 1: Check if already authenticated
+node wallet.mjs whoami
+# → If "Not authenticated", continue to step 2
+
+# Step 2: Register and get claim URL
 node wallet.mjs register "MyTradingBot"
 # → Send the claim_url to your human owner
-# → They log in and optionally tweet for $1 USDC
+# → They log in and optionally tweet for $1 USDC on Solana
 
-# Step 2: Poll for approval (use device_code from step 1)
+# Step 3: Poll for approval (use device_code from step 2)
 node wallet.mjs register --poll <device_code> 5 600
 
-# Step 3: You're authenticated! Check your balance
+# Step 4: You're authenticated! Check your balance
 node wallet.mjs get_balance '{}'
 ```
 
@@ -169,7 +185,7 @@ node wallet.mjs sponge '{"task":"prospect","apollo_query":"Stripe","apollo_endpo
 | `Not authenticated` | Run `node wallet.mjs register <name>` (new agents) or `node wallet.mjs login` (existing users) |
 | `Invalid API key` | Run `node wallet.mjs login` to re-authenticate |
 | `Device code expired` | Start registration/login again |
-| `Tweet verification failed` | Ensure tweet contains exact claim text |
+| `Tweet verification failed` | Ensure tweet contains exact claim text and is posted from your X account |
 | `Chain 'X' is not allowed` | Use correct key type (test vs live) for the chain |
 | `Insufficient balance` | Use `request_funding` |
 | `Address not in allowlist` | Add recipient in the dashboard |
