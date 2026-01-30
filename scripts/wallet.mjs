@@ -24,7 +24,7 @@
  *
  * Environment:
  *   SPONGE_API_KEY  - Optional. Overrides stored credentials.
- *   SPONGE_API_URL  - Optional. Override API base URL (default: https://wallet.staging.paysponge.com)
+ *   SPONGE_API_URL  - Optional. Override API base URL (default: https://api.wallet.paysponge.com)
  */
 
 import * as fs from "node:fs";
@@ -35,7 +35,7 @@ import * as os from "node:os";
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DEFAULT_API_URL = "https://wallet.staging.paysponge.com";
+const DEFAULT_API_URL = "https://api.wallet.paysponge.com";
 const API_URL = process.env.SPONGE_API_URL || DEFAULT_API_URL;
 const CREDENTIALS_DIR = path.join(os.homedir(), ".spongewallet");
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "credentials.json");
@@ -261,7 +261,8 @@ function whoami() {
     if (creds.createdAt) console.log(`  Since: ${creds.createdAt}`);
   } else {
     console.log("Not authenticated.");
-    console.log("\nRun: node wallet.mjs login");
+    console.log("\nAI agents: Run: node wallet.mjs register <your-agent-name>");
+    console.log("Humans with existing accounts: Run: node wallet.mjs login");
   }
 }
 
@@ -486,7 +487,7 @@ const apiKey = getApiKey();
 if (!apiKey) {
   console.error(JSON.stringify({
     status: "error",
-    error: "Not authenticated. Run: node wallet.mjs login",
+    error: "Not authenticated. AI agents: Run: node wallet.mjs register <your-agent-name>. Humans: Run: node wallet.mjs login",
   }));
   process.exit(1);
 }
