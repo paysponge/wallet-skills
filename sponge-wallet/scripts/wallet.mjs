@@ -3,8 +3,7 @@
 /**
  * Sponge Wallet CLI wrapper for Claude Code skills.
  *
- * Connects to the Sponge Wallet MCP server via JSON-RPC, initializes a session,
- * then calls the requested tool.
+ * Calls Sponge Wallet REST endpoints directly (no MCP JSON-RPC).
  *
  * Usage:
  *   node wallet.mjs login                          # Authenticate via browser (OAuth device flow)
@@ -35,8 +34,6 @@ import * as os from "node:os";
 
 const DEFAULT_API_URL = "https://api.wallet.paysponge.com";
 const API_URL = process.env.SPONGE_API_URL || DEFAULT_API_URL;
-const MCP_ENDPOINT = `${API_URL}/mcp`;
-
 const CREDENTIALS_DIR = path.join(os.homedir(), ".spongewallet");
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "credentials.json");
 
@@ -224,78 +221,147 @@ function whoami() {
 }
 
 // ---------------------------------------------------------------------------
-// MCP JSON-RPC
+// REST API
 // ---------------------------------------------------------------------------
 
-async function jsonrpc(apiKey, method, params, sessionId) {
+function buildQuery(params = {}) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    searchParams.set(key, String(value));
+  }
+  return searchParams.toString();
+}
+
+async function apiRequest(apiKey, method, path, { query, body } = {}) {
+  const url = new URL(path, API_URL);
+  const queryString = query ? buildQuery(query) : "";
+  if (queryString) {
+    url.search = queryString;
+  }
+
   const headers = {
     "Authorization": `Bearer ${apiKey}`,
     "Content-Type": "application/json",
-    "Accept": "application/json, text/event-stream",
+    "Accept": "application/json",
   };
-  if (sessionId) {
-    headers["Mcp-Session-Id"] = sessionId;
-  }
 
-  const res = await fetch(MCP_ENDPOINT, {
-    method: "POST",
+  const res = await fetch(url, {
+    method,
     headers,
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method,
-      params,
-      id: crypto.randomUUID(),
-    }),
+    body: body ? JSON.stringify(body) : undefined,
   });
-
-  const returnedSessionId = res.headers.get("mcp-session-id") || sessionId;
 
   if (!res.ok) {
     let errorBody;
     try { errorBody = await res.json(); } catch { errorBody = { message: res.statusText }; }
-    throw new Error(errorBody?.error?.message || errorBody?.message || `HTTP ${res.status}`);
+    throw new Error(errorBody?.message || errorBody?.error || `HTTP ${res.status}`);
   }
 
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(data.error.message || JSON.stringify(data.error));
-  }
-
-  return { result: data.result, sessionId: returnedSessionId };
+  return res.json();
 }
 
-async function callTool(apiKey, tool, toolArgs) {
-  // Step 1: Initialize MCP session
-  const init = await jsonrpc(apiKey, "initialize", {
-    protocolVersion: "2025-03-26",
-    capabilities: {},
-    clientInfo: { name: "sponge-wallet-skill", version: "0.1.0" },
-  });
-
-  const sessionId = init.sessionId;
-
-  // Step 2: Send initialized notification
-  await fetch(MCP_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
-      "Mcp-Session-Id": sessionId,
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "notifications/initialized",
-    }),
-  });
-
-  // Step 3: Call the tool
-  const { result } = await jsonrpc(apiKey, "tools/call", {
-    name: tool,
-    arguments: toolArgs,
-  }, sessionId);
-
-  return result;
+async function callTool(apiKey, tool, toolArgs = {}) {
+  switch (tool) {
+    case "get_balance": {
+      const allowedChains = Array.isArray(toolArgs.allowedChains)
+        ? toolArgs.allowedChains.join(",")
+        : toolArgs.allowedChains;
+      return apiRequest(apiKey, "GET", "/api/balances", {
+        query: {
+          chain: toolArgs.chain ?? "all",
+          allowedChains,
+          onlyUsdc: toolArgs.onlyUsdc ? "true" : undefined,
+        },
+      });
+    }
+    case "evm_transfer":
+      return apiRequest(apiKey, "POST", "/api/transfers/evm", {
+        body: {
+          chain: toolArgs.chain,
+          to: toolArgs.to,
+          amount: toolArgs.amount,
+          currency: toolArgs.currency,
+        },
+      });
+    case "solana_transfer":
+      return apiRequest(apiKey, "POST", "/api/transfers/solana", {
+        body: {
+          chain: toolArgs.chain,
+          to: toolArgs.to,
+          amount: toolArgs.amount,
+          currency: toolArgs.currency,
+        },
+      });
+    case "solana_swap":
+      return apiRequest(apiKey, "POST", "/api/transactions/swap", {
+        body: {
+          chain: toolArgs.chain,
+          inputToken: toolArgs.input_token,
+          outputToken: toolArgs.output_token,
+          amount: toolArgs.amount,
+          slippageBps: toolArgs.slippage_bps,
+        },
+      });
+    case "get_solana_tokens":
+      return apiRequest(apiKey, "GET", "/api/solana/tokens", {
+        query: { chain: toolArgs.chain },
+      });
+    case "search_solana_tokens":
+      return apiRequest(apiKey, "GET", "/api/solana/tokens/search", {
+        query: { query: toolArgs.query, limit: toolArgs.limit },
+      });
+    case "get_transaction_status":
+      return apiRequest(
+        apiKey,
+        "GET",
+        `/api/transactions/status/${encodeURIComponent(toolArgs.transaction_hash)}`,
+        { query: { chain: toolArgs.chain } },
+      );
+    case "get_transaction_history":
+      return apiRequest(apiKey, "GET", "/api/transactions/history", {
+        query: {
+          limit: toolArgs.limit,
+          chain: toolArgs.chain,
+        },
+      });
+    case "request_funding":
+      return apiRequest(apiKey, "POST", "/api/funding-requests", {
+        body: {
+          amount: toolArgs.amount,
+          reason: toolArgs.reason,
+          chain: toolArgs.chain,
+          currency: toolArgs.currency,
+        },
+      });
+    case "withdraw_to_main_wallet":
+      return apiRequest(apiKey, "POST", "/api/wallets/withdraw-to-main", {
+        body: {
+          chain: toolArgs.chain,
+          amount: toolArgs.amount,
+          currency: toolArgs.currency,
+        },
+      });
+    case "sponge":
+      return apiRequest(apiKey, "POST", "/api/sponge", { body: toolArgs });
+    case "create_x402_payment":
+      return apiRequest(apiKey, "POST", "/api/x402/payments", {
+        body: {
+          chain: toolArgs.chain,
+          to: toolArgs.to,
+          token: toolArgs.token,
+          amount: toolArgs.amount,
+          decimals: toolArgs.decimals,
+          valid_for_seconds: toolArgs.valid_for_seconds,
+          resource_url: toolArgs.resource_url,
+          resource_description: toolArgs.resource_description,
+          fee_payer: toolArgs.fee_payer,
+          http_method: toolArgs.http_method,
+        },
+      });
+    default:
+      throw new Error(`Unknown tool: ${tool}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -382,24 +448,7 @@ try {
 
 try {
   const result = await callTool(apiKey, toolName, args);
-
-  // MCP tool results have { content: [{ type, text }], isError? }
-  if (result?.content) {
-    const textParts = result.content
-      .filter(c => c.type === "text")
-      .map(c => {
-        try { return JSON.parse(c.text); }
-        catch { return c.text; }
-      });
-
-    const output = textParts.length === 1 ? textParts[0] : textParts;
-    console.log(JSON.stringify({
-      status: result.isError ? "error" : "success",
-      data: output,
-    }, null, 2));
-  } else {
-    console.log(JSON.stringify({ status: "success", data: result }, null, 2));
-  }
+  console.log(JSON.stringify({ status: "success", data: result }, null, 2));
 } catch (err) {
   console.error(JSON.stringify({
     status: "error",
