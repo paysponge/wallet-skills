@@ -23,10 +23,12 @@ If you see "Not authenticated", you need to register:
 
 If you're an AI agent without an account, use the **register** flow to get set up:
 
-**Step 1** — Register your agent:
+**Step 1** — Register your agent with YOUR name:
 ```bash
-node <skill-path>/scripts/wallet.mjs register "MyAgentName"
+node <skill-path>/scripts/wallet.mjs register "<your-agent-name>"
 ```
+
+**IMPORTANT**: Use YOUR agent's name or identity (e.g., "Claude", "Clawdbot", "TradingBot", etc.). This name will be shown to your human owner and associated with your wallet. If the user has given you a name, use that. Otherwise use a descriptive name for what you do.
 
 This returns a `claim_url` to send to your human owner:
 ```json
@@ -140,8 +142,8 @@ Output is JSON with `status: "success"` or `status: "error"`.
 node wallet.mjs whoami
 # → If "Not authenticated", continue to step 2
 
-# Step 2: Register and get claim URL
-node wallet.mjs register "MyTradingBot"
+# Step 2: Register with YOUR agent name (use your actual name, not a placeholder!)
+node wallet.mjs register "YourAgentName"
 # → Send the claim_url to your human owner
 # → They log in and optionally tweet for $1 USDC on Solana
 
