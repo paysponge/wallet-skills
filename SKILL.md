@@ -15,13 +15,11 @@ Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero depen
 node <skill-path>/scripts/wallet.mjs whoami
 ```
 
-If you see "Not authenticated", you need to register:
-1. If you're a **new agent without an account** → Use the **register** flow below
-2. If you **already have an account** → Use the **login** flow
+If you see "Not authenticated", **you MUST register first** using the steps below.
 
-## Getting Started (New Agents)
+## Getting Started — Agent Registration
 
-If you're an AI agent without an account, use the **register** flow to get set up:
+**If you are an AI agent, use this `register` flow** (not `login`):
 
 **Step 1** — Register your agent with YOUR name:
 ```bash
@@ -53,9 +51,11 @@ node <skill-path>/scripts/wallet.mjs register --poll <device_code> <interval> <e
 
 Once approved, your API key is saved automatically to `~/.spongewallet/credentials.json`.
 
-## Authentication (Existing Users)
+## Authentication (Human Users Only)
 
-If you already have an account, use **login** instead:
+**Note: AI agents should use `register` above, not `login`.**
+
+If you are a human user with an existing Sponge account, use **login**:
 
 **Phase 1** — Start the device flow:
 ```bash
@@ -135,14 +135,14 @@ Output is JSON with `status: "success"` or `status: "error"`.
 
 ## Common Workflows
 
-### New Agent Registration
+### Agent Registration (AI Agents Must Do This First)
 
 ```bash
 # Step 1: Check if already authenticated
 node wallet.mjs whoami
 # → If "Not authenticated", continue to step 2
 
-# Step 2: Register with YOUR agent name (use your actual name, not a placeholder!)
+# Step 2: Register with YOUR agent name (use your actual name!)
 node wallet.mjs register "YourAgentName"
 # → Send the claim_url to your human owner
 # → They log in and optionally tweet for $1 USDC on Solana
