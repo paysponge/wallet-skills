@@ -6,18 +6,21 @@
  * Calls Sponge Wallet REST endpoints directly (no MCP JSON-RPC).
  *
  * Usage:
+ *   node wallet.mjs register <agent_name>          # Register a new agent (get claim URL for human)
+ *   node wallet.mjs register --poll <device_code>  # Poll for registration completion
  *   node wallet.mjs login                          # Authenticate via browser (OAuth device flow)
  *   node wallet.mjs logout                         # Remove stored credentials
  *   node wallet.mjs whoami                         # Show current auth status
  *   node wallet.mjs <tool_name> '<json_args>'      # Call a wallet tool
  *
  * Examples:
+ *   node wallet.mjs register "MyTradingBot"
  *   node wallet.mjs get_balance '{}'
  *   node wallet.mjs evm_transfer '{"chain":"base","to":"0x...","amount":"10","currency":"USDC"}'
  *
  * Credential resolution order:
  *   1. SPONGE_API_KEY environment variable
- *   2. ~/.spongewallet/credentials.json (saved by `login` command)
+ *   2. ~/.spongewallet/credentials.json (saved by `login` or `register` command)
  *
  * Environment:
  *   SPONGE_API_KEY  - Optional. Overrides stored credentials.
@@ -75,6 +78,42 @@ function getApiKey() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Register a new agent (for agents without an account).
+ * Returns a claim URL for the human owner to verify.
+ */
+async function register(agentName) {
+  const res = await fetch(`${API_URL}/api/agents/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: agentName }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to register agent: ${text}`);
+  }
+
+  const data = await res.json();
+
+  console.log(JSON.stringify({
+    status: "registration_pending",
+    agent_name: agentName,
+    claim_url: data.verificationUriComplete,
+    claim_code: data.claimCode,
+    claim_text: data.claimText,
+    device_code: data.deviceCode,
+    expires_in: data.expiresIn,
+    interval: data.interval,
+    message: `Send this URL to your human owner: ${data.verificationUriComplete}`,
+    instructions: [
+      "1. Send the claim_url to your human owner",
+      "2. They will log in and optionally tweet to receive $1 USDC free",
+      "3. Run: node wallet.mjs register --poll <device_code> to get your API key",
+    ],
+  }, null, 2));
 }
 
 /**
@@ -370,6 +409,36 @@ async function callTool(apiKey, tool, toolArgs = {}) {
 
 const command = process.argv[2];
 
+// Handle register command (for new agents without an account)
+if (command === "register") {
+  const subcommand = process.argv[3];
+  try {
+    if (subcommand === "--poll") {
+      // Poll for registration completion (same as login poll)
+      const deviceCode = process.argv[4];
+      const interval = parseInt(process.argv[5] || "5", 10);
+      const expiresIn = parseInt(process.argv[6] || "600", 10);
+      if (!deviceCode) {
+        console.error(JSON.stringify({ status: "error", error: "Usage: node wallet.mjs register --poll <device_code> [interval] [expires_in]" }));
+        process.exit(1);
+      }
+      await loginPoll(deviceCode, interval, expiresIn);
+    } else {
+      // Start registration with agent name
+      const agentName = subcommand || process.argv[3];
+      if (!agentName) {
+        console.error(JSON.stringify({ status: "error", error: "Usage: node wallet.mjs register <agent_name>" }));
+        process.exit(1);
+      }
+      await register(agentName);
+    }
+  } catch (err) {
+    console.error(JSON.stringify({ status: "error", error: err.message }));
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 // Handle auth commands (no API key needed)
 if (command === "login") {
   const subcommand = process.argv[3];
@@ -424,7 +493,7 @@ if (!toolName) {
     status: "error",
     error: "Usage: node wallet.mjs <tool_name> '<json_args>'",
     available_tools: [
-      "login", "logout", "whoami",
+      "register", "login", "logout", "whoami",
       "get_balance", "evm_transfer", "solana_transfer", "solana_swap",
       "get_solana_tokens", "search_solana_tokens",
       "get_transaction_status", "get_transaction_history",

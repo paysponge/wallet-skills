@@ -7,29 +7,56 @@ description: Manages crypto wallets, transfers tokens, swaps on DEXes, checks ba
 
 Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero dependencies — just Node.js 18+.
 
-## Authentication
+## Getting Started (New Agents)
 
-**IMPORTANT**: If any tool returns `"Not authenticated"` or `"Invalid API key"`, run the login flow.
+If you're an AI agent without an account, use the **register** flow to get set up:
 
-Login is two-phase (because Claude Code runs commands non-interactively):
+**Step 1** — Register your agent:
+```bash
+node <skill-path>/scripts/wallet.mjs register "MyAgentName"
+```
 
-**Phase 1** — Start the device flow (returns a URL and code as JSON):
+This returns a `claim_url` to send to your human owner:
+```json
+{
+  "status": "registration_pending",
+  "claim_url": "https://wallet.paysponge.com/device?code=ABCD-1234",
+  "claim_code": "ABCD-1234",
+  "claim_text": "I just claimed my AI agent on @sponge_wallet: ABCD-1234",
+  "device_code": "xxx..."
+}
+```
+
+**Step 2** — Send the `claim_url` to your human owner. They will:
+1. Open the URL and log in
+2. Optionally tweet the `claim_text` to receive **$1 USDC free**
+3. Approve the agent
+
+**Step 3** — Poll for completion:
+```bash
+node <skill-path>/scripts/wallet.mjs register --poll <device_code> <interval> <expires_in>
+```
+
+Once approved, your API key is saved automatically to `~/.spongewallet/credentials.json`.
+
+## Authentication (Existing Users)
+
+If you already have an account, use **login** instead:
+
+**Phase 1** — Start the device flow:
 ```bash
 node <skill-path>/scripts/wallet.mjs login
 ```
-Show the `verification_url` and `user_code` to the user. Tell them to open the URL in their browser and enter the code.
+Show the `verification_url` and `user_code` to the user.
 
-**Phase 2** — After the user confirms they have approved, poll for the token:
+**Phase 2** — After approval, poll for the token:
 ```bash
 node <skill-path>/scripts/wallet.mjs login --poll <device_code> <interval> <expires_in>
 ```
-Use the `device_code`, `interval`, and `expires_in` values from Phase 1 output.
-
-Credentials are saved to `~/.spongewallet/credentials.json` automatically.
 
 Credential resolution order:
 1. `SPONGE_API_KEY` environment variable (if set, skips stored credentials)
-2. `~/.spongewallet/credentials.json` (saved by login)
+2. `~/.spongewallet/credentials.json` (saved by register/login)
 
 Other auth commands:
 - `node wallet.mjs whoami` — show current auth status
@@ -94,6 +121,21 @@ Output is JSON with `status: "success"` or `status: "error"`.
 
 ## Common Workflows
 
+### New Agent Registration
+
+```bash
+# Step 1: Register and get claim URL
+node wallet.mjs register "MyTradingBot"
+# → Send the claim_url to your human owner
+# → They log in and optionally tweet for $1 USDC
+
+# Step 2: Poll for approval (use device_code from step 1)
+node wallet.mjs register --poll <device_code> 5 600
+
+# Step 3: You're authenticated! Check your balance
+node wallet.mjs get_balance '{}'
+```
+
 ### Check Balance → Transfer → Verify
 
 ```bash
@@ -124,8 +166,10 @@ node wallet.mjs sponge '{"task":"prospect","apollo_query":"Stripe","apollo_endpo
 
 | Error | Resolution |
 |-------|------------|
-| `Not authenticated` | Run `node wallet.mjs login` |
+| `Not authenticated` | Run `node wallet.mjs register <name>` (new agents) or `node wallet.mjs login` (existing users) |
 | `Invalid API key` | Run `node wallet.mjs login` to re-authenticate |
+| `Device code expired` | Start registration/login again |
+| `Tweet verification failed` | Ensure tweet contains exact claim text |
 | `Chain 'X' is not allowed` | Use correct key type (test vs live) for the chain |
 | `Insufficient balance` | Use `request_funding` |
 | `Address not in allowlist` | Add recipient in the dashboard |
