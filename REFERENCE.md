@@ -166,6 +166,8 @@ node wallet.mjs withdraw_to_main_wallet '{"chain":"base","amount":"100","currenc
 
 ---
 
+<!-- x402 Paid API tools - temporarily disabled
+
 ## sponge
 
 Unified interface for paid API services via x402 micropayments (~$0.01 USDC per request). Payment is handled automatically.
@@ -264,6 +266,8 @@ Create a signed x402 payment payload for paying external APIs. This is a low-lev
 ```bash
 node wallet.mjs create_x402_payment '{"chain":"base-sepolia","to":"0xf0DfD006e3D0d4F966F1b649359EDB89ba675777","amount":"0.01","token":"0x036CbD53842c5426634e7929541eC2318f3dCF7e"}'
 ```
+
+-->
 
 ---
 
