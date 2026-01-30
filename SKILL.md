@@ -123,14 +123,12 @@ Output is JSON with `status: "success"` or `status: "error"`.
 | `request_funding` | Request funds from owner | `amount`, `chain`, `currency` | — |
 | `withdraw_to_main_wallet` | Return funds to owner | `chain`, `amount` | `currency` |
 
-<!-- Paid APIs (Sponge x402) - temporarily disabled
-### Paid APIs (Sponge x402)
+### x402 Payments
 
 | Tool | Description | Required | Optional |
 |------|-------------|----------|----------|
-| `sponge` | Unified paid API interface | `task` | See [REFERENCE.md](REFERENCE.md) |
+<!-- | `sponge` | Unified paid API interface | `task` | See [REFERENCE.md](REFERENCE.md) | (temporarily disabled) -->
 | `create_x402_payment` | Create x402 payment payload | `chain`, `to`, `amount` | `token`, `decimals` |
--->
 
 ## Chain Reference
 

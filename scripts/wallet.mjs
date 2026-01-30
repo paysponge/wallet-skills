@@ -388,24 +388,24 @@ async function callTool(apiKey, tool, toolArgs = {}) {
           currency: toolArgs.currency,
         },
       });
-    // DISABLED: x402 paid API tools temporarily disabled
+    // DISABLED: Sponge tool temporarily disabled
     // case "sponge":
     //   return apiRequest(apiKey, "POST", "/api/sponge", { body: toolArgs });
-    // case "create_x402_payment":
-    //   return apiRequest(apiKey, "POST", "/api/x402/payments", {
-    //     body: {
-    //       chain: toolArgs.chain,
-    //       to: toolArgs.to,
-    //       token: toolArgs.token,
-    //       amount: toolArgs.amount,
-    //       decimals: toolArgs.decimals,
-    //       valid_for_seconds: toolArgs.valid_for_seconds,
-    //       resource_url: toolArgs.resource_url,
-    //       resource_description: toolArgs.resource_description,
-    //       fee_payer: toolArgs.fee_payer,
-    //       http_method: toolArgs.http_method,
-    //     },
-    //   });
+    case "create_x402_payment":
+      return apiRequest(apiKey, "POST", "/api/x402/payments", {
+        body: {
+          chain: toolArgs.chain,
+          to: toolArgs.to,
+          token: toolArgs.token,
+          amount: toolArgs.amount,
+          decimals: toolArgs.decimals,
+          valid_for_seconds: toolArgs.valid_for_seconds,
+          resource_url: toolArgs.resource_url,
+          resource_description: toolArgs.resource_description,
+          fee_payer: toolArgs.fee_payer,
+          http_method: toolArgs.http_method,
+        },
+      });
     default:
       throw new Error(`Unknown tool: ${tool}`);
   }
@@ -506,7 +506,8 @@ if (!toolName) {
       "get_solana_tokens", "search_solana_tokens",
       "get_transaction_status", "get_transaction_history",
       "request_funding", "withdraw_to_main_wallet",
-      // "sponge", "create_x402_payment", // x402 paid API tools temporarily disabled
+      // "sponge", // sponge tool temporarily disabled
+      "create_x402_payment",
     ],
   }));
   process.exit(1);
