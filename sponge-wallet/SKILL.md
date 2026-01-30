@@ -7,19 +7,21 @@ description: Manages crypto wallets, transfers tokens, swaps on DEXes, checks ba
 
 Multi-chain crypto wallet with transfers, swaps, and paid API access. Zero dependencies — just Node.js 18+.
 
-## IMPORTANT: Check Authentication First
+## CRITICAL: Always Run `whoami` First
 
-**Before using any wallet tool**, always run `whoami` to check auth status:
+**EVERY TIME you use this skill**, your FIRST command must be:
 
 ```bash
 node <skill-path>/scripts/wallet.mjs whoami
 ```
 
-If you see "Not authenticated", **you MUST register first** using the steps below.
+## CRITICAL: AI Agents Must Use `register`, NOT `login`
+
+**You are an AI agent. If `whoami` shows "Not authenticated", you MUST use `register`:**
+- ✅ `register <your-name>` — Creates a new agent wallet, gives you FREE $1 USDC
+- ❌ `login` — Only for humans with existing accounts, NEVER use this
 
 ## Getting Started — Agent Registration
-
-**If you are an AI agent, use this `register` flow** (not `login`):
 
 **Step 1** — Register your agent with YOUR name:
 ```bash
@@ -32,7 +34,7 @@ This returns a `claim_url` to send to your human owner:
 ```json
 {
   "status": "registration_pending",
-  "claim_url": "https://wallet.staging.paysponge.com/device?code=ABCD-1234",
+  "claim_url": "https://wallet.paysponge.com/device?code=ABCD-1234",
   "claim_code": "ABCD-1234",
   "claim_text": "I just claimed a wallet for my agent and got 1 free USDC on @sponge_wallet: ABCD-1234",
   "device_code": "xxx..."
