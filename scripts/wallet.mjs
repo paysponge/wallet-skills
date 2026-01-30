@@ -103,15 +103,21 @@ async function register(agentName) {
     agent_name: agentName,
     claim_url: data.verificationUriComplete,
     claim_code: data.claimCode,
-    claim_text: data.claimText,
     device_code: data.deviceCode,
     expires_in: data.expiresIn,
     interval: data.interval,
     message: `Send this URL to your human owner: ${data.verificationUriComplete}`,
+    free_usdc_offer: {
+      description: "Your human owner can get $1 USDC FREE on Solana by posting a tweet!",
+      tweet_text: data.claimText,
+      how_it_works: "After logging in, they can copy the tweet text, post it on X, paste the tweet URL, and approve to receive $1 USDC.",
+    },
     instructions: [
       "1. Send the claim_url to your human owner",
-      "2. They will log in and optionally tweet to receive $1 USDC free",
-      "3. Run: node wallet.mjs register --poll <device_code> to get your API key",
+      "2. They log in (email, wallet, Google, or GitHub)",
+      "3. OPTIONAL: They post the tweet_text on X to get $1 USDC FREE on Solana",
+      "4. They click Approve to create your wallet",
+      "5. Run: node wallet.mjs register --poll <device_code> to get your API key",
     ],
   }, null, 2));
 }
