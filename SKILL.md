@@ -108,6 +108,13 @@ Output is JSON with `status: "success"` or `status: "error"`.
 | Tool | Description | Required | Optional |
 |------|-------------|----------|----------|
 | `solana_swap` | Swap tokens via Jupiter | `chain`, `input_token`, `output_token`, `amount` | `slippage_bps` |
+| `base_swap` | Swap tokens on Base via 0x | `chain`, `input_token`, `output_token`, `amount` | `slippage_bps` |
+
+### Bridging
+
+| Tool | Description | Required | Optional |
+|------|-------------|----------|----------|
+| `bridge` | Bridge tokens cross-chain via deBridge | `source_chain`, `destination_chain`, `token`, `amount` | `destination_token`, `recipient_address` |
 
 ### Transactions
 
@@ -169,6 +176,26 @@ node wallet.mjs get_transaction_status '{"transaction_hash":"0x...","chain":"bas
 ```bash
 node wallet.mjs search_solana_tokens '{"query":"BONK"}'
 node wallet.mjs solana_swap '{"chain":"solana","input_token":"SOL","output_token":"BONK","amount":"0.5"}'
+```
+
+### Swap Tokens on Base
+
+```bash
+node wallet.mjs base_swap '{"chain":"base","input_token":"ETH","output_token":"USDC","amount":"0.1"}'
+node wallet.mjs base_swap '{"chain":"base","input_token":"USDC","output_token":"DEGEN","amount":"100"}'
+```
+
+### Bridge Tokens Cross-Chain
+
+```bash
+# Bridge ETH from Ethereum to Base
+node wallet.mjs bridge '{"source_chain":"ethereum","destination_chain":"base","token":"ETH","amount":"0.1"}'
+
+# Bridge USDC from Base to Solana
+node wallet.mjs bridge '{"source_chain":"base","destination_chain":"solana","token":"USDC","amount":"50"}'
+
+# Bridge and receive a different token
+node wallet.mjs bridge '{"source_chain":"ethereum","destination_chain":"base","token":"ETH","amount":"0.1","destination_token":"USDC"}'
 ```
 
 <!-- Sponge Paid APIs - temporarily disabled
