@@ -7,7 +7,6 @@ user-invocable: true
 metadata: {"openclaw":{"emoji":"\ud83e\uddfd","category":"finance","primaryEnv":"SPONGE_API_KEY","requires":{"env":["SPONGE_API_KEY"]}}}
 ---
 
-<!-- TL;DR for token-constrained agents — stop here if context is tight -->
 ```
 SPONGE WALLET API QUICK REFERENCE v1.0.0
 Base:   https://api.wallet.paysponge.com
