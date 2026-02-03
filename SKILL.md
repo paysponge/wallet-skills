@@ -41,9 +41,9 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 
 ## Why the steps matter (short rationale)
 
-- **Register vs login**: agents create a new managed wallet tied to a human owner. That owner must explicitly approve the agent. Login is only for humans who already have an account.
+- **Register vs login**: agents create a new managed wallet tied to a human owner. That owner must explicitly claim the agent. Login is only for humans who already have an account.
 - **Claim URL**: ensures the human owner explicitly links the agent to their account and controls allowlists/funding.
-- **Credential persistence**: the device token response returns the `apiKey` once. If you lose it, you must re-register or re-authenticate.
+- **Credential persistence**: the `apiKey` is returned once (immediately for agent-first mode, or after device approval for standard mode). If you lose it, you must re-register or re-authenticate.
 
 ## Standard credential storage (required)
 
@@ -54,7 +54,9 @@ Store the API key in **one canonical location**:
 Recommended file contents:
 ```json
 {
-  "apiKey": "sponge_live_..."
+  "apiKey": "sponge_live_...",
+  "claimCode": "ABCD-1234",
+  "claimUrl": "https://wallet.paysponge.com/device?code=ABCD-1234"
 }
 ```
 
@@ -80,21 +82,36 @@ export SPONGE_API_KEY="$(jq -r .apiKey ~/.spongewallet/credentials.json)"
 
 ### 1) Agent Registration (AI agents only)
 
-**Step 1 — Start registration**
+There are two modes:
+- **Standard device flow** (default): human must approve before the API key is returned.
+- **Agent-first** (`agentFirst: true`): agent receives the API key immediately, and the human can claim later.
+
+**Step 1 — Start registration (agent-first recommended)**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
   -H "Content-Type: application/json" \
-  -d '{"name":"YourAgentName"}'
+  -d '{
+    "name":"YourAgentName",
+    "agentFirst": true,
+    "testnet": true
+  }'
 ```
 
 Response includes:
 - `verificationUriComplete` (claim URL for the human owner)
 - `claimCode`, `deviceCode`, `expiresIn`, `interval`, `claimText`
+- `apiKey` (returned immediately in agent-first mode)
+
+Store `apiKey`, `claimCode`, and `verificationUriComplete` (as `claimUrl`) in `~/.spongewallet/credentials.json` so a human can claim later if context resets.
 
 **Step 2 — Send the claim URL to the human owner**
 They log in, optionally post the tweet text, and approve the agent.
 
-**Step 3 — Poll for completion**
+Claim link format:
+- `verificationUriComplete` (example path: `/device?code=ABCD-1234`)
+- The base URL is the frontend (prod or local), so just pass the full `verificationUriComplete` to the human.
+
+**Step 3 — Poll for completion (standard device flow only)**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
   -H "Content-Type: application/json" \
@@ -106,6 +123,8 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
 ```
 
 On success, the response includes `apiKey`. Save it to `~/.spongewallet/credentials.json` and use it as `SPONGE_API_KEY`.
+
+Note: In **agent-first mode**, you already have the `apiKey` from Step 1. The device token will remain pending until the human claims.
 
 ### 2) Human Login (existing accounts only)
 
@@ -169,9 +188,13 @@ Note: request bodies use camelCase (e.g., `inputToken`, `slippageBps`).
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
   -H "Content-Type: application/json" \
-  -d '{"name":"YourAgentName"}'
+  -d '{
+    "name":"YourAgentName",
+    "agentFirst": true,
+    "testnet": true
+  }'
 ```
-Share the claim URL with your human, then poll for the token and store the `apiKey`.
+Share the claim URL with your human, then store the `apiKey` immediately (agent-first). For standard device flow, poll for the token after approval.
 
 ### 2) Check balance
 ```bash
