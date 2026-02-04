@@ -29,7 +29,7 @@ Key endpoints:
   GET  /api/transactions/history         -> transaction history
   POST /api/funding-requests             -> request funding from owner
   POST /api/wallets/withdraw-to-main     -> withdraw to owner
-  POST /api/x402/payments                -> create x402 payment
+  POST /api/x402/fetch                   -> x402 fetch (auto-pay 402s)
 
 Rules: use register (agents), never login | store key in ~/.spongewallet/credentials.json | requests are JSON
 Errors: HTTP status + JSON error message
@@ -178,7 +178,7 @@ All tool calls are plain REST requests with JSON payloads.
 | `get_transaction_history` | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | `request_funding` | POST | `/api/funding-requests` | Body: `amount`, `reason`, `chain`, `currency` |
 | `withdraw_to_main_wallet` | POST | `/api/wallets/withdraw-to-main` | Body: `chain`, `amount`, `currency` |
-| `create_x402_payment` | POST | `/api/x402/payments` | Body: `chain`, `to`, `token`, `amount`, `decimals`, `valid_for_seconds`, `resource_url`, `resource_description`, `fee_payer`, `http_method` |
+| `x402_fetch` | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
 
 Note: request bodies use camelCase (e.g., `inputToken`, `slippageBps`).
 
@@ -266,6 +266,25 @@ curl -sS "$SPONGE_API_URL/api/transactions/status/0xabc123...?chain=base" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Accept: application/json"
 ```
+
+### x402 Fetch (auto-pay for paid APIs)
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://api.paysponge.com/api/services/purchase/svc_abc123/polymarket/markets?search=bitcoin&limit=5",
+    "method":"GET",
+    "preferred_chain":"base"
+  }'
+```
+
+The `x402_fetch` tool handles the entire payment flow automatically:
+1. Makes the HTTP request to the specified URL
+2. If the service returns 402 Payment Required, extracts payment requirements
+3. Creates and signs a USDC payment using the agent's wallet (Base or Solana)
+4. Retries the request with the Payment-Signature header
+5. Returns the final API response with `payment_made` and `payment_details`
 
 ## Chain Reference
 
