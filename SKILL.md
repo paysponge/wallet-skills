@@ -17,7 +17,7 @@ Key endpoints:
   POST /api/agents/register              -> register (no auth)
   POST /api/oauth/device/authorization   -> device login start (humans)
   POST /api/oauth/device/token           -> device token poll (agents + humans)
-  GET  /api/balances                     -> get balances
+  GET  /api/balances                     -> get balances (includes Polymarket USDC.e)
   POST /api/transfers/evm                -> EVM transfer (ETH/USDC)
   POST /api/transfers/solana             -> Solana transfer (SOL/USDC)
   POST /api/transactions/swap            -> Solana swap
@@ -30,6 +30,13 @@ Key endpoints:
   POST /api/funding-requests             -> request funding from owner
   POST /api/wallets/withdraw-to-main     -> withdraw to owner
   POST /api/x402/fetch                   -> x402 fetch (auto-pay 402s)
+  GET  /api/x402/discover                -> discover x402 services (Bazaar)
+  POST /api/polymarket                   -> Polymarket prediction market trading
+  POST /api/checkout                      -> Amazon checkout (initiate purchase)
+  GET  /api/checkout/:sessionId           -> checkout status
+  DELETE /api/checkout/:sessionId         -> cancel checkout
+  GET  /api/checkout/history              -> checkout history
+  POST /api/checkout/amazon-search        -> search Amazon products
 
 Rules: use register (agents), never login | store key in ~/.spongewallet/credentials.json | requests are JSON
 Errors: HTTP status + JSON error message
@@ -179,8 +186,63 @@ All tool calls are plain REST requests with JSON payloads.
 | `request_funding` | POST | `/api/funding-requests` | Body: `amount`, `reason`, `chain`, `currency` |
 | `withdraw_to_main_wallet` | POST | `/api/wallets/withdraw-to-main` | Body: `chain`, `amount`, `currency` |
 | `x402_fetch` | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
+| `discover_x402_services` | GET | `/api/x402/discover` | Query: `type`, `limit`, `offset`, `include_catalog` |
+| `polymarket` | POST | `/api/polymarket` | Body: `action`, + action-specific params (see below) |
+| `amazon_checkout` | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
+| `get_checkout_status` | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
+| `get_checkout_history` | GET | `/api/checkout/history` | Query: `agentId`, `limit`, `offset` |
+| `amazon_search` | POST | `/api/checkout/amazon-search` | Body: `query`, `maxResults`, `region` |
 
 Note: request bodies use camelCase (e.g., `inputToken`, `slippageBps`).
+
+### Polymarket Actions
+
+The `polymarket` endpoint is a unified tool. Pass `action` plus action-specific parameters:
+
+| Action | Description | Required Params | Optional Params |
+|--------|-------------|-----------------|-----------------|
+| `status` | Check Polymarket account status and USDC.e balance | — | — |
+| `markets` | Search prediction markets | — | `query`, `limit` |
+| `positions` | View current market positions | — | — |
+| `orders` | View open and recent orders | — | — |
+| `order` | Place a buy/sell order | `outcome`, `side`, `size`, `price` | `market_slug` or `token_id`, `order_type` |
+| `cancel` | Cancel an open order | `order_id` | — |
+| `set_allowances` | Reset token approvals | — | — |
+| `withdraw` | Withdraw USDC.e from Safe to any address | `to_address`, `amount` | — |
+
+**Order params:**
+- `market_slug`: Market URL slug (e.g., `"will-bitcoin-hit-100k"`) — use this OR `token_id`
+- `token_id`: Polymarket condition token ID — use this OR `market_slug`
+- `outcome`: `"yes"` or `"no"`
+- `side`: `"buy"` or `"sell"`
+- `size`: Number of shares (e.g., `10`)
+- `price`: Probability price 0.0–1.0 (e.g., `0.65` = 65 cents per share)
+- `order_type`: `"GTC"` (default), `"GTD"`, `"FOK"`, `"FAK"`
+
+**Scopes:** Trade actions (`order`, `cancel`, `set_allowances`, `withdraw`) require `polymarket:trade` scope. Read actions (`status`, `markets`, `positions`, `orders`) require `polymarket:read`.
+
+**Auto-provisioning:** The Polymarket Safe wallet is created automatically on first use. No manual setup needed.
+
+### Amazon Checkout
+
+Purchase products from Amazon using a configured Amazon account.
+
+**Prerequisites:**
+- An Amazon account must be configured via the dashboard or `/api/agents/:id/amazon-accounts` endpoints
+- A shipping address must be set (inline or via `/api/agents/:id/shipping-addresses`)
+
+**Async workflow:**
+1. Initiate checkout with `POST /api/checkout` — returns a `sessionId`
+2. Wait ~60 seconds for the initial checkout process
+3. Poll `GET /api/checkout/:sessionId` every 10 seconds until status is `completed` or `failed`
+
+**Status progression:** `pending` → `in_progress` → `completed` | `failed` | `cancelled`
+
+**Key options:**
+- `dryRun: true` — stops before placing the order (useful for testing or previewing total cost)
+- `clearCart: true` — clears the Amazon cart before adding the product (default behavior)
+
+**Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
 
 ## Quick Start
 
@@ -267,6 +329,91 @@ curl -sS "$SPONGE_API_URL/api/transactions/status/0xabc123...?chain=base" \
   -H "Accept: application/json"
 ```
 
+### Polymarket — Check status
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"status"}'
+```
+
+### Polymarket — Search markets
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"markets","query":"bitcoin","limit":5}'
+```
+
+### Polymarket — Place an order
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"order",
+    "market_slug":"will-bitcoin-hit-100k",
+    "outcome":"yes",
+    "side":"buy",
+    "size":10,
+    "price":0.65
+  }'
+```
+
+### Polymarket — View positions
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"positions"}'
+```
+
+### Polymarket — Withdraw USDC.e
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"withdraw",
+    "to_address":"0x...",
+    "amount":"10.00"
+  }'
+```
+
+### Amazon Checkout — Initiate purchase
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "checkoutUrl":"https://www.amazon.com/dp/B0EXAMPLE",
+    "dryRun":true,
+    "clearCart":true
+  }'
+```
+
+### Amazon Checkout — Poll status
+```bash
+curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Accept: application/json"
+```
+
+### Amazon Checkout — Get history
+```bash
+curl -sS "$SPONGE_API_URL/api/checkout/history?limit=10" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Accept: application/json"
+```
+
+### Amazon — Search products
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/checkout/amazon-search" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"wireless mouse","maxResults":5}'
+```
+
 ### x402 Fetch (auto-pay for paid APIs)
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
@@ -285,6 +432,15 @@ The `x402_fetch` tool handles the entire payment flow automatically:
 3. Creates and signs a USDC payment using the agent's wallet (Base or Solana)
 4. Retries the request with the Payment-Signature header
 5. Returns the final API response with `payment_made` and `payment_details`
+
+### Discover x402 services (Bazaar)
+```bash
+curl -sS "$SPONGE_API_URL/api/x402/discover?limit=10" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Accept: application/json"
+```
+
+Returns available x402-enabled services from the Bazaar and Sponge's curated catalog. Use this to find paid APIs before calling `x402_fetch`.
 
 ## Chain Reference
 
