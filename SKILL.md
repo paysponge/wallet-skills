@@ -2,7 +2,7 @@
 name: sponge-wallet
 version: 0.2.0
 
-description: Crypto wallet, token swaps, cross-chain bridges, and access to paid external services (search, image gen, web scraping, AI, and more) via x402 micropayments.
+description: Crypto wallet, token swaps, cross-chain bridges, Tempo transfers, and access to paid external services (search, image gen, web scraping, AI, and more) via x402 and MPP micropayments.
 homepage: https://wallet.paysponge.com
 user-invocable: true
 metadata: {"openclaw":{"emoji":"\ud83e\uddfd","category":"finance","primaryEnv":"SPONGE_API_KEY","requires":{"env":["SPONGE_API_KEY"]}}}
@@ -15,15 +15,19 @@ Auth:   Authorization: Bearer <SPONGE_API_KEY>
 Ver:    Sponge-Version: 0.2.0  (REQUIRED on every request)
 Docs:   This file is canonical (skills guide + params)
 
-Capabilities: wallet + swaps + bridges + paid external services (x402) + trading + shopping
+Capabilities: wallet + swaps + bridges + Tempo transfers + paid external services (x402 + MPP) + trading + shopping
 
 x402 paid services (search, image gen, scraping, AI, data, etc.):
   GET  /api/x402/discover                -> Step 1: find services by query/category
   GET  /api/x402/discover/:serviceId     -> Step 2: get endpoints, params, pricing (REQUIRED before fetch)
   POST /api/x402/fetch                   -> Step 3: call service endpoint (auto-pays with USDC)
 
+MPP paid services (same as x402 but pays with Tempo stablecoins):
+  POST /api/mpp/fetch                    -> call service endpoint (auto-pays with pathUSD on Tempo)
+
 Wallet & tokens:
   GET  /api/balances                     -> get balances (includes Polymarket USDC.e)
+  POST /api/transfers/tempo              -> Tempo transfer (pathUSD/AlphaUSD/BetaUSD/ThetaUSD)
   POST /api/transfers/evm                -> EVM transfer (ETH/USDC)
   POST /api/transfers/solana             -> Solana transfer (SOL/USDC)
   POST /api/transactions/swap            -> Solana swap
@@ -65,15 +69,16 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 
 ## What you can do with Sponge
 
-1. **Manage crypto** — check balances, transfer tokens, swap on Solana/Base, bridge cross-chain
+1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
 2. **Access paid external services via x402** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
    1. `GET /api/x402/discover?query=...` — find a service
    2. `GET /api/x402/discover/{serviceId}` — get its endpoints, params, and proxy URL **(do not skip)**
    3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2
-3. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-4. **Shop on Amazon** — search products and checkout
+3. **Access paid external services via MPP** — same discover flow as x402, but use `POST /api/mpp/fetch` instead of `x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
+4. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
+5. **Shop on Amazon** — search products and checkout
 
-**If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the x402 3-step flow above. There is likely a paid service available for it.
+**If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the x402 3-step flow or MPP flow above. There is likely a paid service available for it.
 
 ## Why the steps matter (short rationale)
 
@@ -210,6 +215,7 @@ All tool calls are plain REST requests with JSON payloads.
 | Get balances | GET | `/api/balances` | Query: `chain`, `allowedChains`, `onlyUsdc` |
 | List SPL tokens | GET | `/api/solana/tokens` | Query: `chain` |
 | Search Solana tokens | GET | `/api/solana/tokens/search` | Query: `query`, `limit` |
+| Tempo transfer | POST | `/api/transfers/tempo` | Body: `to`, `amount`, `token` (pathUSD/AlphaUSD/BetaUSD/ThetaUSD) |
 | EVM transfer | POST | `/api/transfers/evm` | Body: `chain`, `to`, `amount`, `currency` |
 | Solana transfer | POST | `/api/transfers/solana` | Body: `chain`, `to`, `amount`, `currency` |
 | Solana swap | POST | `/api/transactions/swap` | Body: `chain`, `inputToken`, `outputToken`, `amount`, `slippageBps` |
@@ -221,6 +227,7 @@ All tool calls are plain REST requests with JSON payloads.
 | **x402 Step 1: Discover services** | GET | `/api/x402/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
 | **x402 Step 2: Get service details** | GET | `/api/x402/discover/{serviceId}` | — |
 | **x402 Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
+| **MPP Fetch with auto-pay** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | Polymarket | POST | `/api/polymarket` | Body: `action`, + action-specific params (see below) |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
 | Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
@@ -705,10 +712,65 @@ The `x402_fetch` tool handles the entire payment flow automatically:
 4. Retries the request with the Payment-Signature header
 5. Returns the final API response with `payment_made` and `payment_details`
 
+### Tempo Transfer — Send pathUSD on Tempo
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.0" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to":"0x...",
+    "amount":"10",
+    "token":"pathUSD"
+  }'
+```
+
+Supported tokens: `pathUSD` (default), `AlphaUSD`, `BetaUSD`, `ThetaUSD`.
+
+### MPP — Using Paid External Services via Machine Payments Protocol
+
+MPP (Machine Payments Protocol) works just like x402 but pays with Tempo stablecoins (pathUSD) instead of USDC. Use the same 3-step discover flow as x402 to find services and get their endpoints, then call `mpp_fetch` instead of `x402_fetch`.
+
+**When to use MPP vs x402:**
+- Use **x402** (`POST /api/x402/fetch`) when paying with USDC on Base/Solana/Ethereum
+- Use **MPP** (`POST /api/mpp/fetch`) when paying with pathUSD on Tempo, or when the service accepts MPP payments
+
+**Workflow — same discover steps as x402, different fetch endpoint:**
+1. `GET /api/x402/discover?query=...` — find a service (same as x402)
+2. `GET /api/x402/discover/{serviceId}` — get endpoints, params, and proxy URL **(do not skip)**
+3. `POST /api/mpp/fetch` — call the endpoint using the URL from step 2 (auto-pays with pathUSD on Tempo)
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.0" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://paysponge.com/exa/search",
+    "method":"POST",
+    "body":{"query":"best pizza in NYC","text":true},
+    "chain":"tempo"
+  }'
+```
+
+**Parameters:**
+- `url` (required): The proxy URL from step 2 + endpoint path
+- `method` (optional): HTTP method — `GET`, `POST`, `PUT`, `DELETE`, `PATCH` (defaults to `GET`)
+- `headers` (optional): Additional headers to send with the request
+- `body` (optional): Request body for POST/PUT/PATCH requests
+- `chain` (optional): `tempo` (testnet) or `tempo-mainnet` (defaults to your key's available Tempo chain)
+
+The `mpp_fetch` tool handles the entire payment flow automatically:
+1. Makes the HTTP request to the specified URL
+2. If the service returns 402 Payment Required, extracts the MPP payment challenge
+3. Creates and signs a pathUSD payment credential using the agent's Tempo wallet
+4. Retries the request with the Authorization header containing the MPP credential
+5. Returns the final API response with `payment_made` and `payment_details`
+
 ## Chain Reference
 
 **Test keys** (`sponge_test_*`): `sepolia`, `base-sepolia`, `solana-devnet`, `tempo`
-**Live keys** (`sponge_live_*`): `ethereum`, `base`, `solana`
+**Live keys** (`sponge_live_*`): `ethereum`, `base`, `solana`, `tempo-mainnet`
 
 ## Error Responses
 
