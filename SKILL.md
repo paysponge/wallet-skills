@@ -1,6 +1,6 @@
 ---
 name: sponge-wallet
-version: 0.2.0
+version: 0.2.1
 
 description: Crypto wallet, token swaps, cross-chain bridges, Tempo transfers, and access to paid external services (search, image gen, web scraping, AI, and more) via x402 and MPP micropayments.
 homepage: https://wallet.paysponge.com
@@ -9,7 +9,7 @@ metadata: {"openclaw":{"emoji":"\ud83e\uddfd","category":"finance","primaryEnv":
 ---
 
 ```
-SPONGE WALLET API QUICK REFERENCE v0.2.0
+SPONGE WALLET API QUICK REFERENCE v0.2.1
 Base:   https://api.wallet.paysponge.com
 Auth:   Authorization: Bearer <SPONGE_API_KEY>
 Ver:    Sponge-Version: 0.2.0  (REQUIRED on every request)
@@ -275,13 +275,15 @@ The `polymarket` endpoint is a unified tool. Pass `action` plus action-specific 
 | Action | Description | Required Params | Optional Params |
 |--------|-------------|-----------------|-----------------|
 | `status` | Check Polymarket account status and USDC.e balance | — | — |
-| `markets` | Search prediction markets | — | `query`, `limit` |
+| `search_markets` | Search prediction markets | `query` | `limit` |
+| `get_market` | Get details for one market by slug | `market_slug` | — |
 | `positions` | View current market positions | — | — |
 | `orders` | View open and recent orders | — | — |
-| `order` | Place a buy/sell order | `outcome`, `side`, `size`, `price` | `market_slug` or `token_id`, `order_type` |
+| `order` | Place a buy/sell order | `outcome`, `side`, `size`, and (`market_slug` or `token_id`) | `type`, `price`, `order_type` |
 | `cancel` | Cancel an open order | `order_id` | — |
 | `set_allowances` | Reset token approvals | — | — |
 | `withdraw` | Withdraw USDC.e from Safe to any address | `to_address`, `amount` | — |
+| `withdraw_native` | Recover Polygon-native USDC from Safe | `to_address`, `amount` | — |
 
 **Order params:**
 - `market_slug`: Market URL slug (e.g., `"will-bitcoin-hit-100k"`) — use this OR `token_id`
@@ -289,10 +291,12 @@ The `polymarket` endpoint is a unified tool. Pass `action` plus action-specific 
 - `outcome`: `"yes"` or `"no"`
 - `side`: `"buy"` or `"sell"`
 - `size`: Number of shares (e.g., `10`)
-- `price`: Probability price 0.0–1.0 (e.g., `0.65` = 65 cents per share)
-- `order_type`: `"GTC"` (default), `"GTD"`, `"FOK"`, `"FAK"`
+- `type`: `"limit"` (default) or `"market"`
+- `price`: Probability price 0.0–1.0 (e.g., `0.65` = 65 cents per share). Required for `limit`, optional for `market`.
+- `order_type`: Time-in-force. `"GTC"` (default for `limit`), `"GTD"`, `"FOK"`, `"FAK"` (default for `market` is `"FAK"`).
+- Market order guardrail: `market` orders only support `order_type` `"FOK"` or `"FAK"`.
 
-**Scopes:** Trade actions (`order`, `cancel`, `set_allowances`, `withdraw`) require `polymarket:trade` scope. Read actions (`status`, `markets`, `positions`, `orders`) require `polymarket:read`.
+**Scopes:** Trade actions (`order`, `cancel`, `set_allowances`, `withdraw`, `withdraw_native`) require `polymarket:trade` scope. Read actions (`status`, `search_markets`, `get_market`, `positions`, `orders`) require `polymarket:read`.
 
 **Auto-provisioning:** The Polymarket Safe wallet is created automatically on first use. No manual setup needed.
 
@@ -464,10 +468,19 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.0" \
   -H "Content-Type: application/json" \
-  -d '{"action":"markets","query":"bitcoin","limit":5}'
+  -d '{"action":"search_markets","query":"bitcoin","limit":5}'
 ```
 
-### Polymarket — Place an order
+### Polymarket — Get market by slug
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.0" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"get_market","market_slug":"will-bitcoin-hit-100k"}'
+```
+
+### Polymarket — Place a limit order
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
@@ -478,8 +491,26 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
     "market_slug":"will-bitcoin-hit-100k",
     "outcome":"yes",
     "side":"buy",
+    "type":"limit",
     "size":10,
     "price":0.65
+  }'
+```
+
+### Polymarket — Place a market order (immediate execution)
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.0" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"order",
+    "market_slug":"will-bitcoin-hit-100k",
+    "outcome":"yes",
+    "side":"sell",
+    "type":"market",
+    "size":1.32,
+    "order_type":"FAK"
   }'
 ```
 
