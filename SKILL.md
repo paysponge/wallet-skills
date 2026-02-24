@@ -17,9 +17,9 @@ Docs:   This file is canonical (skills guide + params)
 
 Capabilities: wallet + swaps + bridges + Tempo transfers + paid external services (x402 + MPP) + trading + shopping
 
-x402 paid services (search, image gen, scraping, AI, data, etc.):
-  GET  /api/x402/discover                -> Step 1: find services by query/category
-  GET  /api/x402/discover/:serviceId     -> Step 2: get endpoints, params, pricing (REQUIRED before fetch)
+Paid services (search, image gen, scraping, AI, data, etc.):
+  GET  /api/discover                     -> Step 1: find services by query/category
+  GET  /api/discover/:serviceId          -> Step 2: get endpoints, params, pricing (REQUIRED before fetch)
   POST /api/x402/fetch                   -> Step 3: call service endpoint (auto-pays with USDC)
 
 MPP paid services (same as x402 but pays with Tempo stablecoins):
@@ -70,15 +70,15 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 ## What you can do with Sponge
 
 1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
-2. **Access paid external services via x402** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
-   1. `GET /api/x402/discover?query=...` — find a service
-   2. `GET /api/x402/discover/{serviceId}` — get its endpoints, params, and proxy URL **(do not skip)**
-   3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2
-3. **Access paid external services via MPP** — same discover flow as x402, but use `POST /api/mpp/fetch` instead of `x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
+2. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
+   1. `GET /api/discover?query=...` — find a service
+   2. `GET /api/discover/{serviceId}` — get its endpoints, params, and proxy URL **(do not skip)**
+   3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2 (pays with x402 USDC or MPP pathUSD depending on service)
+3. **Access paid external services via MPP** — same discover flow, but use `POST /api/mpp/fetch` instead of `/api/x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
 4. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 5. **Shop on Amazon** — search products and checkout
 
-**If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the x402 3-step flow or MPP flow above. There is likely a paid service available for it.
+**If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
 
 ## Why the steps matter (short rationale)
 
@@ -224,9 +224,9 @@ All tool calls are plain REST requests with JSON payloads.
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Request funding | POST | `/api/funding-requests` | Body: `amount`, `reason`, `chain`, `currency` |
-| **x402 Step 1: Discover services** | GET | `/api/x402/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
-| **x402 Step 2: Get service details** | GET | `/api/x402/discover/{serviceId}` | — |
-| **x402 Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
+| **Step 1: Discover services** | GET | `/api/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
+| **Step 2: Get service details** | GET | `/api/discover/{serviceId}` | — |
+| **Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
 | **MPP Fetch with auto-pay** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | Polymarket | POST | `/api/polymarket` | Body: `action`, + action-specific params (see below) |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
@@ -240,12 +240,12 @@ All tool calls are plain REST requests with JSON payloads.
 
 Note: request bodies use camelCase (e.g., `inputToken`, `slippageBps`).
 
-> **CRITICAL — x402 Paid Services require ALL 3 steps in order:**
-> 1. `GET /api/x402/discover` — search for a service by query or category
-> 2. `GET /api/x402/discover/{serviceId}` — get the service's endpoints, parameters, pricing, and proxy URL (**DO NOT SKIP THIS STEP**)
+> **CRITICAL — Paid Services require ALL 3 steps in order:**
+> 1. `GET /api/discover` — search for a service by query or category
+> 2. `GET /api/discover/{serviceId}` — get the service's endpoints, parameters, pricing, and proxy URL (**DO NOT SKIP THIS STEP**)
 > 3. `POST /api/x402/fetch` — call the endpoint using the URL from step 2
 >
-> You MUST call step 2 before step 3. Step 2 returns the correct proxy URL and the endpoint parameters/instructions needed to construct the `x402_fetch` request. Using a direct API URL will fail with auth errors.
+> You MUST call step 2 before step 3. Step 2 returns the correct proxy URL and the endpoint parameters/instructions needed to construct the fetch request. Using a direct API URL will fail with auth errors.
 
 ### Planning (Multi-Step Actions)
 
@@ -656,9 +656,9 @@ curl -sS -X POST "$SPONGE_API_URL/api/checkout/amazon-search" \
   -d '{"query":"wireless mouse","maxResults":5}'
 ```
 
-### x402 — Using Paid External Services (Search, Image Gen, Scraping, AI, etc.)
+### Using Paid External Services (Search, Image Gen, Scraping, AI, etc.)
 
-x402 gives you access to a catalog of paid APIs. **If you need a capability you don't have natively** (web search, image generation, web scraping, data enrichment, AI models, etc.), use x402 to discover and call a service.
+The catalog gives you access to paid APIs via x402 (USDC) or MPP (pathUSD). **If you need a capability you don't have natively** (web search, image generation, web scraping, data enrichment, AI models, etc.), discover and call a service.
 
 Always follow this 3-step workflow: **discover → get service details → fetch**.
 
@@ -667,23 +667,23 @@ Always follow this 3-step workflow: **discover → get service details → fetch
 #### Step 1: Discover services
 
 ```bash
-curl -sS "$SPONGE_API_URL/api/x402/discover?limit=10" \
+curl -sS "$SPONGE_API_URL/api/discover?limit=10" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.0" \
   -H "Accept: application/json"
 ```
 
-Returns available x402-enabled services from the Bazaar catalog. Supports semantic search via the `query` parameter (vector embeddings rank results by relevance). Combine with `category` to narrow results.
+Returns available paid services from the catalog. Supports semantic search via the `query` parameter (vector embeddings rank results by relevance). Combine with `category` to narrow results.
 
 ```bash
 # Search by natural language description
-curl -sS "$SPONGE_API_URL/api/x402/discover?query=web+scraping+and+crawling" \
+curl -sS "$SPONGE_API_URL/api/discover?query=web+scraping+and+crawling" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.0" \
   -H "Accept: application/json"
 
 # Filter by category
-curl -sS "$SPONGE_API_URL/api/x402/discover?category=search" \
+curl -sS "$SPONGE_API_URL/api/discover?category=search" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.0" \
   -H "Accept: application/json"
@@ -693,20 +693,20 @@ Available categories: `search`, `image`, `llm`, `crawl`, `data`, `predict`, `par
 
 Each result includes: `id`, `name`, `description`, `category`, `endpointCount`.
 
-**The discover response does NOT include endpoint paths, parameters, or the proxy URL needed for `x402_fetch`. You MUST call step 2 next.**
+**The discover response does NOT include endpoint paths, parameters, or the proxy URL needed for fetch. You MUST call step 2 next.**
 
 #### Step 2: Get service details (REQUIRED — do not skip)
 
-Once you have a service `id` from step 1 (e.g., `ctg_abc123`), call `GET /api/x402/discover/{serviceId}` to get the service's endpoints, parameters, pricing, and the correct proxy URL:
+Once you have a service `id` from step 1 (e.g., `ctg_abc123`), call `GET /api/discover/{serviceId}` to get the service's endpoints, parameters, pricing, and the correct proxy URL:
 
 ```bash
-curl -sS "$SPONGE_API_URL/api/x402/discover/ctg_abc123" \
+curl -sS "$SPONGE_API_URL/api/discover/ctg_abc123" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.0" \
   -H "Accept: application/json"
 ```
 
-This returns everything you need to construct the `x402_fetch` call:
+This returns everything you need to construct the fetch call:
 - **url**: The correct proxy URL to use in step 3 (this is different from the service's raw URL)
 - **endpoints**: List of callable endpoints, each with:
   - `method`: HTTP method (GET, POST, etc.)
@@ -719,9 +719,9 @@ This returns everything you need to construct the `x402_fetch` call:
 
 **Without this step, you don't know what endpoints exist, what parameters they accept, or what URL to use.**
 
-#### Step 3: Call with x402_fetch
+#### Step 3: Call with fetch
 
-Construct the URL as: **service `url` from step 2** + **endpoint `path` from step 2**. Then call `x402_fetch`:
+Construct the URL as: **service `url` from step 2** + **endpoint `path` from step 2**. Then call fetch:
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
@@ -736,7 +736,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
   }'
 ```
 
-The `x402_fetch` tool handles the entire payment flow automatically:
+The fetch endpoint handles the entire payment flow automatically (x402 USDC or MPP pathUSD depending on service):
 1. Makes the HTTP request to the specified URL
 2. If the service returns 402 Payment Required, extracts payment requirements
 3. Creates and signs a USDC payment using the agent's wallet (Base or Solana)
@@ -760,15 +760,15 @@ Supported tokens: `pathUSD` (default), `AlphaUSD`, `BetaUSD`, `ThetaUSD`.
 
 ### MPP — Using Paid External Services via Machine Payments Protocol
 
-MPP (Machine Payments Protocol) works just like x402 but pays with Tempo stablecoins (pathUSD) instead of USDC. Use the same 3-step discover flow as x402 to find services and get their endpoints, then call `mpp_fetch` instead of `x402_fetch`.
+MPP (Machine Payments Protocol) works just like the standard fetch but pays with Tempo stablecoins (pathUSD) instead of USDC. Use the same 3-step discover flow to find services and get their endpoints, then call `mpp_fetch` instead of `fetch`.
 
-**When to use MPP vs x402:**
-- Use **x402** (`POST /api/x402/fetch`) when paying with USDC on Base/Solana/Ethereum
+**When to use MPP vs standard fetch:**
+- Use **x402 fetch** (`POST /api/x402/fetch`) when paying with USDC on Base/Solana/Ethereum
 - Use **MPP** (`POST /api/mpp/fetch`) when paying with pathUSD on Tempo, or when the service accepts MPP payments
 
-**Workflow — same discover steps as x402, different fetch endpoint:**
-1. `GET /api/x402/discover?query=...` — find a service (same as x402)
-2. `GET /api/x402/discover/{serviceId}` — get endpoints, params, and proxy URL **(do not skip)**
+**Workflow — same discover steps, different fetch endpoint:**
+1. `GET /api/discover?query=...` — find a service
+2. `GET /api/discover/{serviceId}` — get endpoints, params, and proxy URL **(do not skip)**
 3. `POST /api/mpp/fetch` — call the endpoint using the URL from step 2 (auto-pays with pathUSD on Tempo)
 
 ```bash
