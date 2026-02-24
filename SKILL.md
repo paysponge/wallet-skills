@@ -72,7 +72,7 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
 2. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
    1. `GET /api/discover?query=...` — find a service
-   2. `GET /api/discover/{serviceId}` — get its endpoints, params, and proxy URL **(do not skip)**
+   2. `GET /api/discover/{serviceId}` — get its endpoints, params, and payment config **(do not skip)**
    3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2 (pays with x402 USDC or MPP pathUSD depending on service)
 3. **Access paid external services via MPP** — same discover flow, but use `POST /api/mpp/fetch` instead of `/api/x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
 4. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
@@ -242,10 +242,10 @@ Note: request bodies use camelCase (e.g., `inputToken`, `slippageBps`).
 
 > **CRITICAL — Paid Services require ALL 3 steps in order:**
 > 1. `GET /api/discover` — search for a service by query or category
-> 2. `GET /api/discover/{serviceId}` — get the service's endpoints, parameters, pricing, and proxy URL (**DO NOT SKIP THIS STEP**)
+> 2. `GET /api/discover/{serviceId}` — get the service's endpoints, parameters, pricing, and payment config (**DO NOT SKIP THIS STEP**)
 > 3. `POST /api/x402/fetch` — call the endpoint using the URL from step 2
 >
-> You MUST call step 2 before step 3. Step 2 returns the correct proxy URL and the endpoint parameters/instructions needed to construct the fetch request. Using a direct API URL will fail with auth errors.
+> You MUST call step 2 before step 3. Step 2 returns the `paymentsProtocolConfig` (with baseUrls) and the endpoint parameters/instructions needed to construct the fetch request. Using a direct API URL will fail with auth errors.
 
 ### Planning (Multi-Step Actions)
 
@@ -693,11 +693,11 @@ Available categories: `search`, `image`, `llm`, `crawl`, `data`, `predict`, `par
 
 Each result includes: `id`, `name`, `description`, `category`, `endpointCount`.
 
-**The discover response does NOT include endpoint paths, parameters, or the proxy URL needed for fetch. You MUST call step 2 next.**
+**The discover response does NOT include endpoint paths, parameters, or the baseUrl needed for fetch. You MUST call step 2 next.**
 
 #### Step 2: Get service details (REQUIRED — do not skip)
 
-Once you have a service `id` from step 1 (e.g., `ctg_abc123`), call `GET /api/discover/{serviceId}` to get the service's endpoints, parameters, pricing, and the correct proxy URL:
+Once you have a service `id` from step 1 (e.g., `ctg_abc123`), call `GET /api/discover/{serviceId}` to get the service's endpoints, parameters, pricing, and payment config:
 
 ```bash
 curl -sS "$SPONGE_API_URL/api/discover/ctg_abc123" \
@@ -707,10 +707,13 @@ curl -sS "$SPONGE_API_URL/api/discover/ctg_abc123" \
 ```
 
 This returns everything you need to construct the fetch call:
-- **url**: The correct proxy URL to use in step 3 (this is different from the service's raw URL)
+- **paymentsProtocolConfig**: Array of payment options, each with:
+  - `baseUrl`: The proxy URL to use in step 3
+  - `protocol`: `x402` or `mpp`
+  - `networks`: Supported networks (e.g. `["base", "solana"]` for x402, `["tempo"]` for mpp)
 - **endpoints**: List of callable endpoints, each with:
   - `method`: HTTP method (GET, POST, etc.)
-  - `path`: Endpoint path to append to the service URL
+  - `path`: Endpoint path to append to the baseUrl
   - `description`: What the endpoint does
   - `price` / `currency`: Cost per call
   - `parameters`: JSON schema for query/path/body params — tells you exactly what to send
@@ -721,7 +724,7 @@ This returns everything you need to construct the fetch call:
 
 #### Step 3: Call with fetch
 
-Construct the URL as: **service `url` from step 2** + **endpoint `path` from step 2**. Then call fetch:
+Pick a protocol from `paymentsProtocolConfig` and construct the URL as: **`baseUrl`** + **endpoint `path`**. Then call fetch (use `/api/x402/fetch` for x402, `/api/mpp/fetch` for mpp):
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
@@ -768,7 +771,7 @@ MPP (Machine Payments Protocol) works just like the standard fetch but pays with
 
 **Workflow — same discover steps, different fetch endpoint:**
 1. `GET /api/discover?query=...` — find a service
-2. `GET /api/discover/{serviceId}` — get endpoints, params, and proxy URL **(do not skip)**
+2. `GET /api/discover/{serviceId}` — get endpoints, params, and payment config **(do not skip)**
 3. `POST /api/mpp/fetch` — call the endpoint using the URL from step 2 (auto-pays with pathUSD on Tempo)
 
 ```bash
@@ -785,7 +788,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
 ```
 
 **Parameters:**
-- `url` (required): The proxy URL from step 2 + endpoint path
+- `url` (required): The baseUrl from step 2's `paymentsProtocolConfig` + endpoint path
 - `method` (optional): HTTP method — `GET`, `POST`, `PUT`, `DELETE`, `PATCH` (defaults to `GET`)
 - `headers` (optional): Additional headers to send with the request
 - `body` (optional): Request body for POST/PUT/PATCH requests
