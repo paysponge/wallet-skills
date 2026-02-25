@@ -27,7 +27,7 @@ MPP paid services (same as x402 but pays with Tempo stablecoins):
 
 Wallet & tokens:
   GET  /api/balances                     -> get balances (includes Polymarket USDC.e)
-  POST /api/signup-bonus/claim           -> one-time onboarding bonus (5 USDC on Base)
+  POST /api/signup-bonus/claim           -> one-time onboarding bonus (1 USDC on Base)
   POST /api/transfers/tempo              -> Tempo transfer (pathUSD/AlphaUSD/BetaUSD/ThetaUSD)
   POST /api/transfers/evm                -> EVM transfer (ETH/USDC)
   POST /api/transfers/solana             -> Solana transfer (SOL/USDC)
@@ -70,7 +70,7 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 
 ## What you can do with Sponge
 
-1. **Run onboarding with a real tool call** — claim a one-time signup bonus (5 USDC on Base) to your agent wallet so you can test end-to-end setup immediately.
+1. **Run onboarding with a real tool call** — claim a one-time signup bonus (1 USDC on Base) to your agent wallet so you can test end-to-end setup immediately.
 2. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
 3. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
    1. `GET /api/discover?query=...` — find a service
@@ -126,7 +126,7 @@ export SPONGE_API_KEY="$(jq -r .apiKey ~/.spongewallet/credentials.json)"
 Use this as your first end-to-end setup test after connecting an agent.
 
 ### Goal
-Claim a one-time 5 USDC bonus on Base, verify balance, then make a real tool/API call.
+Claim a one-time 1 USDC bonus on Base, verify balance, then make a real tool/API call.
 
 ### Step 1: Claim the bonus
 
@@ -273,7 +273,7 @@ All tool calls are plain REST requests with JSON payloads.
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Request funding | POST | `/api/funding-requests` | Body: `amount`, `reason`, `chain`, `currency` |
-| Claim signup bonus | POST | `/api/signup-bonus/claim` | Body: optional `agentId`; sends one-time 5 USDC on Base |
+| Claim signup bonus | POST | `/api/signup-bonus/claim` | Body: optional `agentId`; sends one-time 1 USDC on Base |
 | **Step 1: Discover services** | GET | `/api/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
 | **Step 2: Get service details** | GET | `/api/discover/{serviceId}` | — |
 | **Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
