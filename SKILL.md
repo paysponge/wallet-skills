@@ -27,6 +27,7 @@ MPP paid services (same as x402 but pays with Tempo stablecoins):
 
 Wallet & tokens:
   GET  /api/balances                     -> get balances (includes Polymarket USDC.e)
+  POST /api/signup-bonus/claim           -> one-time onboarding bonus (5 USDC on Base)
   POST /api/transfers/tempo              -> Tempo transfer (pathUSD/AlphaUSD/BetaUSD/ThetaUSD)
   POST /api/transfers/evm                -> EVM transfer (ETH/USDC)
   POST /api/transfers/solana             -> Solana transfer (SOL/USDC)
@@ -69,14 +70,15 @@ This skill is **doc-only**. There is no local CLI. Agents must call the Sponge W
 
 ## What you can do with Sponge
 
-1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
-2. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
+1. **Run onboarding with a real tool call** — claim a one-time signup bonus (5 USDC on Base) to your agent wallet so you can test end-to-end setup immediately.
+2. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base, bridge cross-chain
+3. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
    1. `GET /api/discover?query=...` — find a service
    2. `GET /api/discover/{serviceId}` — get its endpoints, params, and payment config **(do not skip)**
    3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2 (pays with x402 USDC or MPP pathUSD depending on service)
-3. **Access paid external services via MPP** — same discover flow, but use `POST /api/mpp/fetch` instead of `/api/x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
-4. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-5. **Shop on Amazon** — search products and checkout
+4. **Access paid external services via MPP** — same discover flow, but use `POST /api/mpp/fetch` instead of `/api/x402/fetch`. Pays with pathUSD on the Tempo chain instead of USDC. Use MPP when the service accepts MPP payments or when you want to pay from your Tempo balance.
+5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
+6. **Shop on Amazon** — search products and checkout
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
 
@@ -118,6 +120,53 @@ Quick env setup:
 export SPONGE_API_URL="https://api.wallet.paysponge.com"
 export SPONGE_API_KEY="$(jq -r .apiKey ~/.spongewallet/credentials.json)"
 ```
+
+## Onboarding Tutorial: claim_signup_bonus
+
+Use this as your first end-to-end setup test after connecting an agent.
+
+### Goal
+Claim a one-time 5 USDC bonus on Base, verify balance, then make a real tool/API call.
+
+### Step 1: Claim the bonus
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/signup-bonus/claim" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Expected response fields:
+- `success: true`
+- `transactionHash`
+- `recipientAddress`
+- `amount: "5"`
+- `currency: "USDC"`
+- `chain: "base"`
+
+Rules:
+- This bonus is one-time per user account.
+- A second claim returns conflict/already-claimed.
+
+### Step 2: Verify funds landed
+
+```bash
+curl -sS "$SPONGE_API_URL/api/balances?chain=base&onlyUsdc=true" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Accept: application/json"
+```
+
+### Step 3: Make your first real tool call
+
+Recommended onboarding flow:
+1. `POST /api/signup-bonus/claim`
+2. `GET /api/balances?chain=base&onlyUsdc=true`
+3. Run any real task (`/api/x402/fetch`, transfer, swap, bridge, etc.)
+
+If your agent uses MCP tool names instead of raw REST routes, call `claim_signup_bonus` first, then `get_balance`.
 
 ## CRITICAL: AI Agents Must Use `register`, NOT `login`
 
@@ -224,6 +273,7 @@ All tool calls are plain REST requests with JSON payloads.
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Request funding | POST | `/api/funding-requests` | Body: `amount`, `reason`, `chain`, `currency` |
+| Claim signup bonus | POST | `/api/signup-bonus/claim` | Body: optional `agentId`; sends one-time 5 USDC on Base |
 | **Step 1: Discover services** | GET | `/api/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
 | **Step 2: Get service details** | GET | `/api/discover/{serviceId}` | — |
 | **Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
