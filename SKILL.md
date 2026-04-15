@@ -70,7 +70,7 @@ Banking (Bridge.xyz):
   MCP: bank_list_transfers       -> list fiat transfer history
 
 Trading & shopping:
-  # POST /api/polymarket                   -> Polymarket prediction market trading (temporarily disabled)
+  POST /api/polymarket                     -> Polymarket prediction market trading
   POST /api/hyperliquid                  -> Hyperliquid perps/spot trading
   POST /api/checkout                     -> Amazon checkout (initiate purchase)
   GET  /api/checkout/:sessionId          -> checkout status
@@ -328,7 +328,42 @@ Use `submit_plan` whenever you need to do 2+ related actions together (e.g., swa
 
 ### Polymarket Actions
 
-Polymarket is temporarily disabled. Do not call `/api/polymarket` until it is re-enabled.
+The `polymarket` endpoint is a unified tool for Polymarket trading, funding, withdrawals, and account status. Pass `action` plus action-specific parameters:
+
+| Action | Description | Required Params | Optional Params |
+|--------|-------------|-----------------|-----------------|
+| `status` | Check whether Polymarket is linked and view balances | — | — |
+| `search_markets` | Search Polymarket markets | `query` | `limit` |
+| `get_market` | Fetch market metadata | `market_slug` or `token_id` | — |
+| `get_market_price` | Fetch current market price | `market_slug` or `token_id` | — |
+| `positions` | View current positions | — | — |
+| `orders` | View open orders | — | — |
+| `get_order` | Fetch an order by ID | `order_id` | — |
+| `balance_allowance` | View CLOB balance + allowance | — | — |
+| `refresh_balance_allowance` | Refresh CLOB balance + allowance | — | — |
+| `order` | Place a limit or market order | `outcome`, `side`, `size`, `market_slug` or `token_id` | `type`, `price`, `order_type` |
+| `cancel` | Cancel an order | `order_id` | — |
+| `set_allowances` | Approve contracts for trading | — | — |
+| `deposit` | Make Safe-held USDC.e available to the exchange | — | — |
+| `deposit_from_wallet` | Move Polygon wallet USDC.e into the Safe | `amount` | — |
+| `withdraw` | Withdraw USDC.e to Polygon wallet | `amount` | — |
+| `withdraw_native` | Withdraw Polygon-native USDC to Polygon wallet | `amount` | — |
+| `redeem` | Redeem settled winning positions | — | `condition_id` |
+
+**Order params:**
+- `market_slug` or `token_id`: identify which market to trade
+- `outcome`: `"yes"` or `"no"`
+- `side`: `"buy"` or `"sell"`
+- `size`: number of shares
+- `type`: `"limit"` or `"market"`; defaults to `"limit"`
+- `price`: required for limit orders, decimal between `0` and `1`
+- `order_type`: `"GTC"`, `"GTD"`, `"FOK"`, or `"FAK"`; market orders only support `FOK` or `FAK`
+
+**Scopes:** Trade and funding actions (`order`, `cancel`, `set_allowances`, `deposit`, `deposit_from_wallet`, `withdraw`, `withdraw_native`, `redeem`) require `polymarket:trade`. Read actions require `wallet:read`.
+
+**Provisioning:** Trading and funding calls auto-link Polymarket on first use if the agent has a Polygon/EVM wallet. You can also explicitly enable it with `POST /api/agents/:id/polymarket/enable`.
+
+**Funding:** For cross-chain funding, use the bridge tool with `destination_chain: "polymarket"` so the route lands as USDC.e in the Polymarket Safe.
 
 ### Hyperliquid Actions
 
@@ -596,9 +631,53 @@ curl -sS "$SPONGE_API_URL/api/transactions/status/0xabc123...?chain=base" \
   -H "Accept: application/json"
 ```
 
-### Polymarket
+### Polymarket — Check account status
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"status"}'
+```
 
-Polymarket examples are temporarily disabled and intentionally omitted from this skill.
+### Polymarket — Search markets
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"search_markets","query":"election","limit":5}'
+```
+
+### Polymarket — Place a limit order
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"order",
+    "market_slug":"will-bitcoin-be-above-100k-on-december-31-2026",
+    "outcome":"yes",
+    "side":"buy",
+    "size":10,
+    "type":"limit",
+    "price":0.42,
+    "order_type":"GTC"
+  }'
+```
+
+### Polymarket — Withdraw to Polygon wallet
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"withdraw",
+    "amount":"25"
+  }'
+```
 
 ### Hyperliquid — Check account status
 ```bash
