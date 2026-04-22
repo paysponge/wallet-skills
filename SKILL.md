@@ -561,6 +561,8 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
 
 For multiple paid requests to the same service, use `mpp_session` to open a session with a budget:
 
+Do **not** use `mpp_session` just because the URL is on an MPP/Tempo route. Many MPP endpoints are still one-shot charge flows. Default to `paid_fetch` first; if the response shows `payment_details.intent: "session"` or the endpoint is clearly SSE/streaming, then reuse that endpoint with `mpp_session`.
+
 1. **Start:** `mpp_session(action: "start", max_deposit: "10")` — opens session with budget ceiling
 2. **Request:** `mpp_session(action: "request", session_id: "...", url: "...", method: "POST", body: {...})` — makes paid requests within the session
 3. **Close:** `mpp_session(action: "close", session_id: "...")` — settles and releases unused deposit
@@ -1038,6 +1040,8 @@ The fetch endpoint handles the entire payment flow automatically:
 3. Creates and signs a payment using the agent's wallet (USDC for x402; for MPP, the asset the endpoint requested — typically USDC.e)
 4. Retries the request with the payment header
 5. Returns the final API response with `payment_made` and `payment_details`
+
+If `payment_details.intent` comes back as `"session"`, that means the endpoint supports Tempo session payments. For follow-up calls to that same endpoint, switch to `mpp_session` instead of repeatedly creating one-shot calls.
 
 #### Fetching an OpenAPI spec when you need it
 
