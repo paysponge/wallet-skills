@@ -15,12 +15,14 @@ Auth:   Authorization: Bearer <SPONGE_API_KEY>
 Ver:    Sponge-Version: 0.2.1  (REQUIRED on every request)
 Docs:   This file is canonical (skills guide + params)
 
-Capabilities: wallet + swaps (Solana/Base/Tempo) + bridges + payment links + paid external services (x402) + trading + shopping + prepaid cards + banking
+Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + prepaid cards + banking + virtual cards + onramp
 
 Paid services (search, image gen, scraping, AI, data, etc.):
   GET  /api/discover                     -> Step 1: find services by query/category
   GET  /api/discover/:serviceId          -> Step 2: get endpoints, params, pricing (REQUIRED before fetch)
-  POST /api/x402/fetch                   -> Step 3: call service endpoint (auto-pays with USDC)
+  POST /api/paid/fetch                   -> Step 3: call service endpoint (auto-selects x402 USDC or MPP on Tempo)
+  POST /api/x402/fetch                   -> Step 3 alt: call service endpoint (x402 USDC only)
+  POST /api/mpp/fetch                    -> Step 3 alt: call service endpoint (MPP on Tempo; asset negotiated per endpoint, typically USDC.e)
   POST /api/siwe/generate                -> optional SIWE auth for endpoints that require EIP-4361 signatures
 
 Wallet & tokens:
@@ -29,13 +31,17 @@ Wallet & tokens:
   GET  /api/payment-links/:paymentLinkId -> get payment link status/details
   POST /api/transfers/evm                -> EVM transfer (ETH/USDC)
   POST /api/transfers/solana             -> Solana transfer (SOL/USDC)
+  POST /api/transfers/tempo              -> Tempo transfer (pathUSD/AlphaUSD/BetaUSD/ThetaUSD)
   POST /api/solana/sign                  -> Sign pre-built Solana transaction only
   POST /api/solana/sign-and-send         -> Sign and submit pre-built Solana transaction
-  POST /api/transactions/swap            -> Solana swap
+  POST /api/transactions/swap            -> Solana swap (DFlow); also supports EVM chains
+  POST /api/transactions/swap/quote      -> Solana swap quote only (DFlow)
+  POST /api/transactions/swap/execute    -> Execute a previously obtained swap quote
   POST /api/transactions/base-swap       -> Base swap (0x)
   POST /api/transactions/tempo-swap      -> Tempo swap (StablecoinExchange DEX)
-  POST /api/transactions/bridge          -> Bridge (deBridge)
+  POST /api/transactions/bridge          -> Bridge (Relay)
   MCP: consolidate_usdc                  -> Consolidate USDC from all chains into one
+  MCP: token_chart                       -> Token price charts (GeckoTerminal)
   GET  /api/solana/tokens                -> list SPL tokens
   GET  /api/solana/tokens/search         -> search Jupiter token list
   GET  /api/transactions/status/:txHash  -> transaction status
@@ -48,6 +54,14 @@ Secrets & checkout data:
   GET  /api/agent-keys/value             -> retrieve a stored secret value (use `service=credit_card` for cards; this is the only read call needed for personal saved cards)
   DELETE /api/agent-keys                 -> delete saved secret by service (use `service=credit_card` to remove personal saved card)
   POST /api/agent-keys                   -> store non-card service keys (`service=credit_card` is rejected)
+
+Virtual cards (enrolled cards):
+  MCP: get_virtual_card                  -> issue virtual card for a specific amount/merchant
+  MCP: get_card_session                  -> get secure session to retrieve vaulted card details
+  MCP: report_card_usage                 -> report outcome of a purchase attempt
+
+Onramp:
+  POST /api/onramp/crypto               -> create fiat-to-crypto onramp link (Stripe/Coinbase)
 
 Planning & proposals:
   POST /api/plans/submit                 -> submit multi-step plan
@@ -76,7 +90,6 @@ Trading & shopping:
   GET  /api/checkout/:sessionId          -> checkout status
   DELETE /api/checkout/:sessionId        -> cancel checkout
   GET  /api/checkout/history             -> checkout history
-  POST /api/checkout/amazon-search       -> search Amazon products
 
 Auth (one-time setup):
   POST /api/agents/register              -> register (no auth)
@@ -93,19 +106,21 @@ This skill is **doc-only**. There is no local CLI. Most capabilities are exposed
 
 ## What you can do with Sponge
 
-1. **Manage crypto** — check balances, transfer tokens (EVM and Solana), swap on Solana/Base/Tempo, bridge cross-chain
+1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base/Ethereum/Polygon/Arbitrum/Tempo, bridge cross-chain, view token price charts
    - For pre-built Solana transactions returned by an external API, use `POST /api/solana/sign-and-send`.
    - Use `POST /api/solana/sign` only when you explicitly need a partially/fully signed transaction back without broadcasting.
 2. **Create payment links** — generate reusable x402 payment URLs and check payment status
 3. **Access paid external services** — search, image generation, web scraping, AI models, data enrichment, and more. Always follow these 3 steps:
    1. `GET /api/discover?query=...` — find a service
    2. `GET /api/discover/{serviceId}` — get its endpoints, params, and payment config **(do not skip)**
-   3. `POST /api/x402/fetch` — call the endpoint using the URL and params from step 2 (auto-pays with USDC)
+   3. `POST /api/paid/fetch` — call the endpoint (auto-selects x402 USDC or MPP on Tempo based on service). Alternatively use `POST /api/x402/fetch` (USDC only) or `POST /api/mpp/fetch` (MPP on Tempo; asset negotiated per endpoint, typically USDC.e).
    - If the target endpoint also requires SIWE auth, generate the signature first with MCP tool `generate_siwe` and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-6. **Shop on Amazon** — search products and checkout
+6. **Shop on Amazon** — checkout with configured Amazon account
 7. **Store encrypted card data for checkout** — use the dedicated card tool (`store_credit_card` / `POST /api/credit-cards`)
+8. **Virtual cards** — issue virtual cards for web purchases from enrolled cards
+9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
 
@@ -183,8 +198,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
   -H "Content-Type: application/json" \
   -d '{
     "name":"YourAgentName",
-    "agentFirst": true,
-    "testnet": true
+    "agentFirst": true
   }'
 ```
 
@@ -266,11 +280,15 @@ All tool calls are plain REST requests with JSON payloads.
 | Get payment link status | GET | `/api/payment-links/{paymentLinkId}` | Query: `agentId` (optional) |
 | List SPL tokens | GET | `/api/solana/tokens` | Query: `chain` |
 | Search Solana tokens | GET | `/api/solana/tokens/search` | Query: `query`, `limit` |
+| Tempo transfer | POST | `/api/transfers/tempo` | Body: `to`, `amount`, `token` (pathUSD/AlphaUSD/BetaUSD/ThetaUSD), optional `data` (hex calldata for raw contract calls) |
 | EVM transfer | POST | `/api/transfers/evm` | Body: `chain`, `to`, `amount`, `currency` |
 | Solana transfer | POST | `/api/transfers/solana` | Body: `chain`, `to`, `amount`, `currency` |
 | Solana swap | POST | `/api/transactions/swap` | Body: `chain`, `inputToken`, `outputToken`, `amount`, `slippageBps` |
+| Solana swap quote | POST | `/api/transactions/swap/quote` | Body: `chain`, `inputToken`, `outputToken`, `amount`, `slippageBps` |
+| Solana swap execute | POST | `/api/transactions/swap/execute` | Body: `quoteId` |
 | Base swap | POST | `/api/transactions/base-swap` | Body: `chain`, `inputToken`, `outputToken`, `amount`, `slippageBps` |
-| Tempo swap | POST | `/api/transactions/tempo-swap` | Body: `chain` (tempo-testnet/tempo), `inputToken`, `outputToken`, `amount`, `slippageBps` |
+| Tempo swap | POST | `/api/transactions/tempo-swap` | Body: `chain` (tempo), `inputToken`, `outputToken`, `amount`, `slippageBps` |
+| Token chart | MCP only | `token_chart` | Args: `network` (solana/base/eth), `token`, optional `interval` (5m/15m/1h/4h/1d), `limit` |
 | Bridge | POST | `/api/transactions/bridge` | Body: `sourceChain`, `destinationChain`, `token`, `amount`, `destinationToken`, `recipientAddress` |
 | Consolidate USDC | MCP only | `consolidate_usdc` | Args: `destination_chain`, `min_amount` (optional, default `"1"`) |
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
@@ -282,19 +300,25 @@ All tool calls are plain REST requests with JSON payloads.
 | Delete stored key | DELETE | `/api/agent-keys` | Query: `service` (`credit_card` to delete saved personal card), optional `agentId` |
 | **Step 1: Discover services** | GET | `/api/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
 | **Step 2: Get service details** | GET | `/api/discover/{serviceId}` | — |
-| **Step 3: Fetch with auto-pay** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
+| **Step 3: Paid fetch (unified)** | POST | `/api/paid/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` (preferred wallet chain hint) |
+| **Step 3 alt: x402 fetch** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
+| **Step 3 alt: MPP fetch** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | SIWE signature | POST | `/api/siwe/generate` | Body: `domain`, `uri`; optional: `statement`, `nonce`, `chain_id`, `expiration_time`, `not_before`, `request_id`, `resources` |
+| Virtual card | MCP only | `get_virtual_card` | Args: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id` |
+| Card session | MCP only | `get_card_session` | Args: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id` |
+| Report card usage | MCP only | `report_card_usage` | Args: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason` |
+| Crypto onramp | POST | `/api/onramp/crypto` | Body: `wallet_address`; optional: `provider` (auto/stripe/coinbase), `chain` (base/solana/polygon), `fiat_amount`, `fiat_currency` |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
 | Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
 | Checkout status | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
 | Checkout history | GET | `/api/checkout/history` | Query: `agentId`, `limit`, `offset` |
-| Amazon search | POST | `/api/checkout/amazon-search` | Body: `query`, `maxResults`, `region` |
 | Submit plan | POST | `/api/plans/submit` | Body: `title`, `reasoning`, `steps` (see Planning section) |
 | Approve plan | POST | `/api/plans/approve` | Body: `plan_id` |
 | Propose trade | POST | `/api/trades/propose` | Body: `input_token`, `output_token`, `amount`, `reason` |
-| **Order prepaid card** | MCP | `order_prepaid_card` | `amount` (5–1000). NON-RELOADABLE, NON-REFUNDABLE. |
-| **Get prepaid card** | MCP | `get_prepaid_card` | `card_id` (optional, omit to list all) |
-| **Search card merchants** | MCP | `search_prepaid_card_merchants` | `query` (merchant name) |
+| **Order prepaid card** | MCP only | `order_prepaid_card` | Args: `amount` (5–1000). NON-RELOADABLE, NON-REFUNDABLE. |
+| **Get prepaid card** | MCP only | `get_prepaid_card` | Args: `card_id` (optional, omit to list all) |
+| **Search card merchants** | MCP only | `search_prepaid_card_merchants` | Args: `query` (merchant name) |
+| MPP session | MCP only | `mpp_session` | Args: `action` (start/request/close/list); see MPP Session section |
 
 Note: most request bodies use camelCase (e.g., `inputToken`, `slippageBps`). Card secret endpoints use snake_case fields (e.g., `card_number`, `cardholder_name`).
 
@@ -316,7 +340,7 @@ Use `submit_plan` whenever you need to do 2+ related actions together (e.g., swa
 4. Steps execute sequentially and automatically. If any step fails, the plan pauses for retry or reject.
 
 **Step types:**
-- `swap` — requires: `input_token`, `output_token`, `amount`, `reason`; optional: `chain` (defaults to solana; use `base`, `tempo-testnet`, or `tempo` for other DEXs)
+- `swap` — requires: `input_token`, `output_token`, `amount`, `reason`; optional: `chain` (defaults to solana; use `base` or `tempo` for other DEXs)
 - `transfer` — requires: `chain`, `to`, `amount`, `currency`, `reason`
 - `bridge` — requires: `source_chain`, `destination_chain`, `token`, `amount`, `reason`; optional: `destination_token`
 
@@ -426,6 +450,141 @@ Purchase products from Amazon using a configured Amazon account.
 
 **Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
 
+### Tempo Transfer
+
+Send Tempo stablecoins (pathUSD, AlphaUSD, BetaUSD, ThetaUSD) on the Tempo chain.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to":"0x...",
+    "amount":"10",
+    "token":"pathUSD"
+  }'
+```
+
+Supported tokens: `pathUSD` (default), `AlphaUSD`, `BetaUSD`, `ThetaUSD`.
+
+For raw contract calls, pass `data` (hex calldata) instead of `token`/`amount`:
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to":"0xContractAddress...",
+    "amount":"0",
+    "data":"0xabcdef..."
+  }'
+```
+
+### EVM Swaps (Ethereum, Polygon, Arbitrum)
+
+In addition to Solana swaps and Base swaps, swaps are available on Ethereum, Polygon, and Arbitrum via the MCP tools `ethereum_swap`, `polygon_swap`, and `arbitrum_swap`. These use the 0x Protocol aggregator for optimal pricing.
+
+The unified `POST /api/transactions/swap` REST endpoint also supports EVM chains — pass the chain name (e.g., `base`, `ethereum`, `polygon`, `arbitrum-one`) in the `chain` field.
+
+### Swap Quote & Execute (Solana)
+
+For Solana swaps, you can get a quote before executing:
+
+1. **Get quote:** `POST /api/transactions/swap/quote` — returns pricing details and a `quoteId`
+2. **Execute:** `POST /api/transactions/swap/execute` with `{ "quoteId": "..." }` — executes the quoted swap
+
+Quotes expire in ~30 seconds. Use this when you want to preview pricing or get user confirmation before swapping.
+
+### Token Price Charts
+
+Get price chart data for any token on Solana, Base, or Ethereum via GeckoTerminal. MCP-only tool: `token_chart`.
+
+Parameters:
+- `network`: `"solana"`, `"base"`, or `"eth"`
+- `token`: Token address or symbol (e.g., `"SOL"`, `"ETH"`, `"USDC"`, or a contract address)
+- `interval`: Candle interval — `"5m"`, `"15m"`, `"1h"` (default), `"4h"`, `"1d"`
+- `limit`: Number of candles (default 100, max 1000)
+
+Returns an ASCII sparkline, OHLC price summary, and a link to the web chart.
+
+### Virtual Cards (Enrolled Cards)
+
+If the user has enrolled a card via the dashboard, you can issue virtual cards for specific purchases.
+
+**MCP tools:**
+- `get_virtual_card` — issue a virtual card scoped to a specific amount and merchant. Returns card number, expiry, CVC.
+- `get_card_session` — get a short-lived session to retrieve full card details (PAN, expiry, CVC) from a vaulted payment method. Returns `session_key` and `retrieve_url`. Immediately fetch: `GET {retrieve_url}` with header `BT-API-KEY: {session_key}`.
+- `report_card_usage` — report the outcome (success/failed/cancelled) of a purchase attempt that used a stored card. Logs usage and updates spending records.
+
+### Crypto Onramp
+
+Create a fiat-to-crypto onramp link to fund your wallet with USDC via card or bank payment.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/onramp/crypto" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet_address":"0x...",
+    "chain":"base",
+    "fiat_amount":"100"
+  }'
+```
+
+Returns a hosted checkout URL. Provider is auto-selected (Stripe first, Coinbase fallback). Mainnet chains only.
+
+### MPP — Machine Payments Protocol
+
+MPP works like x402 but settles on Tempo instead of Base/Solana/Ethereum. The asset is negotiated per endpoint (typically USDC.e). Use the same 3-step discover flow, then call `/api/mpp/fetch` instead of `/api/x402/fetch`.
+
+**When to use MPP vs x402:**
+- Use **x402** (`POST /api/x402/fetch`) when paying with USDC on Base/Solana/Ethereum
+- Use **MPP** (`POST /api/mpp/fetch`) when the endpoint settles on Tempo (asset chosen by the endpoint, e.g. USDC.e)
+- Use **paid_fetch** (`POST /api/paid/fetch`) to let the system auto-select the best protocol
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://paysponge.com/exa/search",
+    "method":"POST",
+    "body":{"query":"best pizza in NYC","text":true},
+    "chain":"tempo"
+  }'
+```
+
+### MPP Session (MCP only)
+
+For multiple paid requests to the same service, use `mpp_session` to open a session with a budget:
+
+1. **Start:** `mpp_session(action: "start", max_deposit: "10")` — opens session with budget ceiling
+2. **Request:** `mpp_session(action: "request", session_id: "...", url: "...", method: "POST", body: {...})` — makes paid requests within the session
+3. **Close:** `mpp_session(action: "close", session_id: "...")` — settles and releases unused deposit
+4. **List:** `mpp_session(action: "list")` — inspect existing sessions
+
+### Paid Fetch (Unified)
+
+`POST /api/paid/fetch` is the recommended fetch tool — it auto-selects the best payment route (x402 USDC on Base/Solana/Ethereum, or MPP on Tempo with the endpoint's chosen asset) based on the service's supported protocols and your wallet balances.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url":"https://paysponge.com/exa/search",
+    "method":"POST",
+    "body":{"query":"best pizza in NYC","text":true},
+    "chain":"base"
+  }'
+```
+
+The `chain` parameter is a hint for which wallet to spend from, not a hard requirement — the system falls back automatically if the endpoint doesn't support the requested chain.
+
 ### Prepaid Cards (Laso Finance)
 
 Order prepaid Visa debit cards funded with USDC on Base. US merchants only.
@@ -513,8 +672,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
   -H "Content-Type: application/json" \
   -d '{
     "name":"YourAgentName",
-    "agentFirst": true,
-    "testnet": true
+    "agentFirst": true
   }'
 ```
 Share the claim URL with your human, then store the `apiKey` immediately (agent-first). For standard device flow, poll for the token after approval.
@@ -790,18 +948,9 @@ curl -sS "$SPONGE_API_URL/api/checkout/history?limit=10" \
   -H "Accept: application/json"
 ```
 
-### Amazon — Search products
-```bash
-curl -sS -X POST "$SPONGE_API_URL/api/checkout/amazon-search" \
-  -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"wireless mouse","maxResults":5}'
-```
-
 ### Using Paid External Services (Search, Image Gen, Scraping, AI, etc.)
 
-The catalog gives you access to paid APIs via x402 (USDC). **If you need a capability you don't have natively** (web search, image generation, web scraping, data enrichment, AI models, etc.), discover and call a service.
+The catalog gives you access to paid APIs via x402 (USDC on Base/Solana/Ethereum) or MPP (Tempo, asset negotiated per endpoint — typically USDC.e). **If you need a capability you don't have natively** (web search, image generation, web scraping, data enrichment, AI models, etc.), discover and call a service.
 
 Always follow this 3-step workflow: **discover → get service details → fetch**.
 
@@ -852,8 +1001,8 @@ curl -sS "$SPONGE_API_URL/api/discover/ctg_abc123" \
 This returns everything you need to construct the fetch call:
 - **paymentsProtocolConfig**: Array of payment options, each with:
   - `baseUrl`: The proxy URL to use in step 3
-  - `protocol`: `x402`
-  - `networks`: Supported networks (e.g. `["base", "solana"]`)
+  - `protocol`: `x402` or `mpp`
+  - `networks`: Supported networks (e.g. `["base", "solana"]` for x402, `["tempo"]` for mpp)
 - **endpoints**: List of callable endpoints, each with:
   - `method`: HTTP method (GET, POST, etc.)
   - `path`: Endpoint path to append to the baseUrl
@@ -861,16 +1010,17 @@ This returns everything you need to construct the fetch call:
   - `price` / `currency`: Cost per call
   - `parameters`: JSON schema for query/path/body params — tells you exactly what to send
   - `instructions`: Free-text usage guide with examples
+- **openapiSpecUrl**: URL to the service's OpenAPI spec. Only fetch it if `parameters` / `instructions` on the endpoint don't tell you enough to build the request body.
 - **docsUrl**: Link to the service's official API documentation (fallback reference)
 
 **Without this step, you don't know what endpoints exist, what parameters they accept, or what URL to use.**
 
 #### Step 3: Call with fetch
 
-Pick a protocol from `paymentsProtocolConfig` and construct the URL as: **`baseUrl`** + **endpoint `path`**. Then call fetch via `/api/x402/fetch`:
+Pick a protocol from `paymentsProtocolConfig` and construct the URL as: **`baseUrl`** + **endpoint `path`**. Then call fetch via `/api/paid/fetch` (recommended — auto-selects protocol), `/api/x402/fetch` (x402 USDC only), or `/api/mpp/fetch` (MPP on Tempo; asset negotiated per endpoint):
 
 ```bash
-curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
+curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Content-Type: application/json" \
@@ -878,16 +1028,25 @@ curl -sS -X POST "$SPONGE_API_URL/api/x402/fetch" \
     "url":"https://paysponge.com/exa/search",
     "method":"POST",
     "body":{"query":"best pizza in NYC","text":true},
-    "preferred_chain":"base"
+    "chain":"base"
   }'
 ```
 
 The fetch endpoint handles the entire payment flow automatically:
 1. Makes the HTTP request to the specified URL
 2. If the service returns 402 Payment Required, extracts payment requirements
-3. Creates and signs a USDC payment using the agent's wallet (Base or Solana)
-4. Retries the request with the Payment-Signature header
+3. Creates and signs a payment using the agent's wallet (USDC for x402; for MPP, the asset the endpoint requested — typically USDC.e)
+4. Retries the request with the payment header
 5. Returns the final API response with `payment_made` and `payment_details`
+
+#### Fetching an OpenAPI spec when you need it
+
+If the `parameters` / `instructions` from step 2 aren't enough to build the request body — or the user points at a service that `GET /api/discover` doesn't know about — use the `get_openapi_spec` MCP tool. It accepts one of:
+
+- `service_id`: a catalog service id (returns the cached spec, no network fetch).
+- `url`: either a direct OpenAPI URL (e.g. `https://api.example.com/openapi.json`) or a base URL. For a base URL, common paths are probed automatically (`/openapi.json`, `/openapi.yaml`, `/.well-known/x402`, `/docs/openapi.json`, `/swagger.json`, etc.).
+
+Returns `{ spec, sourceUrl, format, status }`. `status: "ok"` means the spec was found; `status: "not_found"` means none was discovered — fall back to `docsUrl` or your best guess. Only call this tool when you actually need the spec; specs can be large.
 
 ## Banking (Bridge.xyz) — MCP only
 
@@ -936,8 +1095,7 @@ ACH settlement: typically 1-3 business days.
 
 ## Chain Reference
 
-**Test keys** (`sponge_test_*`): `sepolia`, `base-sepolia`, `tempo-testnet`, `solana-devnet`
-**Live keys** (`sponge_live_*`): `ethereum`, `base`, `tempo`, `solana`
+Supported chains: `ethereum`, `base`, `polygon`, `arbitrum-one`, `tempo`, `solana`.
 
 ## Error Responses
 
