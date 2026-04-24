@@ -75,7 +75,7 @@ Planning & proposals:
   POST /api/plans/approve                -> approve and execute plan
   POST /api/trades/propose               -> propose single swap for approval
 
-Banking (Bridge.xyz):
+Banking:
   POST /api/bank/onboard          -> start KYC, get hosted verification URL
   GET  /api/bank/status           -> check KYC/onboarding status
   POST /api/bank/virtual-account  -> create/get virtual bank account (USD→USDC deposits)
@@ -1214,7 +1214,7 @@ The fetch endpoint handles the entire payment flow automatically:
 
 If the `parameters` / `instructions` from step 2 are not enough to build the request body, fall back to the service `docsUrl` returned by `GET /api/discover/{serviceId}` or the provider's official API docs.
 
-## Banking (Bridge.xyz)
+## Banking
 
 Receive and send USD via bank accounts over REST.
 
