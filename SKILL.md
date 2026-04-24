@@ -61,6 +61,10 @@ Virtual cards (enrolled cards):
   MCP: report_card_usage                 -> report outcome of a purchase attempt
 
 Sponge Card (beta preview):
+  GET  /api/sponge-card/status           -> onboarding/consent/card readiness status
+  POST /api/sponge-card/onboard          -> submit KYC application + consent acknowledgements
+  POST /api/sponge-card/terms            -> accept terms for an existing application
+  POST /api/sponge-card/create-card      -> create the virtual Sponge Card after approval
   GET  /api/sponge-card/details          -> encrypted PAN/CVC + secret_key + spending power (decrypt client-side)
   POST /api/sponge-card/fund             -> top up card collateral with USDC from your wallet
   POST /api/sponge-card/withdraw         -> withdraw card collateral back to your wallet
@@ -312,6 +316,10 @@ Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are
 | Virtual card | MCP only | `get_virtual_card` | Args: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id` |
 | Card session | MCP only | `get_card_session` | Args: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id` |
 | Report card usage | MCP only | `report_card_usage` | Args: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason` |
+| **Sponge Card status** (admin) | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
+| **Onboard Sponge Card** (admin) | POST | `/api/sponge-card/onboard` | Body: KYC fields, consent booleans, optional `email`, `phone_*`, `agentId` |
+| **Accept Sponge Card terms** (admin) | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
+| **Create Sponge Card** (admin) | POST | `/api/sponge-card/create-card` | Body: `billing`, `email`, `phone`, optional `shipping`, `agentId` |
 | **Sponge Card details** (admin) | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
 | **Fund Sponge Card** (admin) | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
 | **Withdraw from Sponge Card** (admin) | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
@@ -336,7 +344,7 @@ Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are
 | **Search card merchants** | MCP only | `search_prepaid_card_merchants` | Args: `query` (merchant name) |
 | MPP session | MCP only | `mpp_session` | Args: `action` (start/request/close/list); see MPP Session section |
 
-Note: most request bodies use camelCase (e.g., `inputToken`, `slippageBps`). Card secret endpoints use snake_case fields (e.g., `card_number`, `cardholder_name`).
+Note: most request bodies use camelCase (e.g., `inputToken`, `slippageBps`). Card secret endpoints and Sponge Card API endpoints use snake_case fields (e.g., `card_number`, `cardholder_name`, `first_name`, `postal_code`).
 
 > **CRITICAL — Paid Services require ALL 3 steps in order:**
 > 1. `GET /api/discover` — search for a service by query or category
@@ -537,7 +545,108 @@ If the user has enrolled a card via the dashboard, you can issue virtual cards f
 
 The Sponge Card is a stablecoin-collateralized credit card. Access is gated during beta — ineligible calls return 403 `Forbidden`.
 
-Three endpoints — also exposed as MCP tools (`get_sponge_card_details`, `fund_sponge_card`, `withdraw_sponge_card`). Environment (dev vs production) is fixed by your API key type: `sponge_test_*` → dev sandbox, `sponge_live_*` → production.
+These endpoints mirror the MCP tools for onboarding, card creation, card details, funding, and withdrawal. Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -> dev sandbox, `sponge_live_*` -> production.
+
+The full no-UI flow is:
+
+1. `GET /api/sponge-card/status` - check onboarding and card readiness.
+2. `POST /api/sponge-card/onboard` - submit KYC data and consent acknowledgements.
+3. If status says consent is missing, `POST /api/sponge-card/terms`.
+4. When `ready_for_card_creation` is true, `POST /api/sponge-card/create-card`.
+5. Use `/details`, `/fund`, and `/withdraw` after a card exists.
+
+#### Check onboarding status
+
+```bash
+curl -sS "$SPONGE_API_URL/api/sponge-card/status?refresh=true" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Accept: application/json"
+```
+
+Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, `cards`, `balances`, and `message`. If `completion_link_url` is present, Rain needs hosted identity/document verification. Have the user complete that URL outside Sponge, then poll status again.
+
+#### Onboard for Sponge Card
+
+Submit the same KYC and consent data collected by the dashboard. Bodies use snake_case.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email":"user@example.com",
+    "first_name":"Ada",
+    "last_name":"Lovelace",
+    "birth_date":"1990-01-01",
+    "national_id":"123456789",
+    "country_of_issue":"US",
+    "phone_country_code":"1",
+    "phone_number":"4155550100",
+    "address":{
+      "line1":"123 Market St",
+      "city":"San Francisco",
+      "region":"CA",
+      "postal_code":"94105",
+      "country_code":"US"
+    },
+    "occupation":"Software engineer",
+    "e_sign_consent":true,
+    "account_opening_privacy_notice":true,
+    "sponge_card_terms":true,
+    "information_certification":true,
+    "unauthorized_solicitation_acknowledgement":true
+  }'
+```
+
+- `email` is optional if the authenticated user email is available.
+- `national_id` is sensitive. Do not log, store, or echo it after submission.
+- `account_opening_privacy_notice` is required when `address.country_code` is `US`.
+
+Returns `submitted_application`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, and `message`.
+
+#### Accept Sponge Card terms
+
+Use this only when `/status` says the Rain application is approved but Sponge consent is missing.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/terms" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "e_sign_consent":true,
+    "account_opening_privacy_notice":true,
+    "sponge_card_terms":true,
+    "information_certification":true,
+    "unauthorized_solicitation_acknowledgement":true
+  }'
+```
+
+#### Create a Sponge Card
+
+Call this after status returns `ready_for_card_creation: true`. If a card already exists for this API-key environment, the API returns the existing card instead of issuing a duplicate.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/create-card" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "billing":{
+      "line1":"123 Market St",
+      "city":"San Francisco",
+      "region":"CA",
+      "postal_code":"94105",
+      "country_code":"US"
+    },
+    "email":"user@example.com",
+    "phone":"+14155550100"
+  }'
+```
+
+Returns `created`, `environment`, `card`, and `message`.
 
 #### Fetch card details (encrypted)
 
@@ -611,7 +720,7 @@ Notes:
 - Solana withdrawals run as two transactions (submit admin signature, then withdraw); only the final tx hash is returned.
 - Sponge rate-limits withdrawal authorizations. If a previous signature is still active you'll get a "retry after N seconds" error.
 
-**Scopes:** `get_sponge_card_details` requires `payment:read`. `fund_sponge_card` and `withdraw_sponge_card` require `wallet:write` + `transaction:sign` + `transaction:write`.
+**Scopes:** `get_sponge_card_status` and `get_sponge_card_details` require `payment:read`. `onboard_sponge_card` requires `wallet:write` + `payment:write`. `accept_sponge_card_terms` and `create_sponge_card` require `payment:write`. `fund_sponge_card` and `withdraw_sponge_card` require `wallet:write` + `transaction:sign` + `transaction:write`.
 
 ### Crypto Onramp
 
