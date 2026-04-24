@@ -84,8 +84,8 @@ Banking (Bridge.xyz):
   MCP: bank_create_virtual_account -> create/get virtual bank account (USD→USDC deposits)
   MCP: bank_get_virtual_account  -> get deposit instructions for a wallet
   MCP: bank_list_external_accounts -> list linked bank accounts
-  MCP: bank_add_external_account -> link US bank account for ACH payouts
-  MCP: bank_send                -> off-ramp: send USD to linked bank via ACH (USDC→USD)
+  MCP: bank_add_external_account -> link US bank account for ACH or wire payouts
+  MCP: bank_send                -> off-ramp: send USD to linked bank via ACH or wire (USDC→USD)
   MCP: bank_list_transfers       -> list fiat transfer history
 
 Trading & shopping:
@@ -1146,7 +1146,7 @@ Receive and send USD via bank accounts. All tools are MCP-only (not REST).
 
 ### Setup flow
 
-1. **Onboard** — `bank_onboard` to start KYC. Returns a hosted URL for identity verification.
+1. **Onboard** — `bank_onboard` to start KYC. Returns a hosted URL for identity verification unless the customer is already active.
 2. **Check status** — `bank_status` to poll KYC progress (pending → approved).
 3. Once approved, you can:
    - **Receive USD as USDC** (on-ramp): create a virtual bank account, get deposit instructions, share them with sender
@@ -1164,7 +1164,7 @@ MCP: bank_get_virtual_account     { wallet_id: "<uuid>" }
 
 When someone sends USD to the virtual account's bank details, it's automatically converted to USDC and deposited into the wallet. Supported chains: Ethereum, Base, Solana.
 
-### Off-ramp: USDC → USD (ACH)
+### Off-ramp: USDC → USD (ACH or wire)
 
 ```
 # 1. Link a US bank account
@@ -1176,14 +1176,15 @@ MCP: bank_add_external_account  {
 # 2. List linked accounts (get external_account_id)
 MCP: bank_list_external_accounts
 
-# 3. Send USD via ACH (converts USDC from wallet → USD)
-MCP: bank_send  { wallet_id, external_account_id, amount: "100.00" }
+# 3. Send USD via ACH or wire (converts USDC from wallet → USD)
+MCP: bank_send  { wallet_id, external_account_id, amount: "100.00", payment_rail: "ach" }
+MCP: bank_send  { wallet_id, external_account_id, amount: "100.00", payment_rail: "wire" }
 
 # 4. Check transfer status
 MCP: bank_list_transfers  { transfer_id?: "<uuid>" }
 ```
 
-ACH settlement: typically 1-3 business days.
+ACH settlement: typically 1-3 business days. Wire payouts are typically faster.
 
 ## Chain Reference
 
