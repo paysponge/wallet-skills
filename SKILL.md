@@ -60,6 +60,11 @@ Virtual cards (enrolled cards):
   MCP: get_card_session                  -> get secure session to retrieve vaulted card details
   MCP: report_card_usage                 -> report outcome of a purchase attempt
 
+Sponge Card (beta preview):
+  GET  /api/sponge-card/details          -> encrypted PAN/CVC + secret_key + spending power (decrypt client-side)
+  POST /api/sponge-card/fund             -> top up card collateral with USDC from your wallet
+  POST /api/sponge-card/withdraw         -> withdraw card collateral back to your wallet
+
 Onramp:
   POST /api/onramp/crypto               -> create fiat-to-crypto onramp link (Stripe/Coinbase)
 
@@ -307,6 +312,9 @@ All tool calls are plain REST requests with JSON payloads.
 | Virtual card | MCP only | `get_virtual_card` | Args: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id` |
 | Card session | MCP only | `get_card_session` | Args: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id` |
 | Report card usage | MCP only | `report_card_usage` | Args: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason` |
+| **Sponge Card details** (admin) | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
+| **Fund Sponge Card** (admin) | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
+| **Withdraw from Sponge Card** (admin) | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
 | Crypto onramp | POST | `/api/onramp/crypto` | Body: `wallet_address`; optional: `provider` (auto/stripe/coinbase), `chain` (base/solana/polygon), `fiat_amount`, `fiat_currency` |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
 | Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
@@ -516,6 +524,86 @@ If the user has enrolled a card via the dashboard, you can issue virtual cards f
 - `get_virtual_card` — issue a virtual card scoped to a specific amount and merchant. Returns card number, expiry, CVC.
 - `get_card_session` — get a short-lived session to retrieve full card details (PAN, expiry, CVC) from a vaulted payment method. Returns `session_key` and `retrieve_url`. Immediately fetch: `GET {retrieve_url}` with header `BT-API-KEY: {session_key}`.
 - `report_card_usage` — report the outcome (success/failed/cancelled) of a purchase attempt that used a stored card. Logs usage and updates spending records.
+
+### Sponge Card (beta preview)
+
+The Sponge Card is a stablecoin-collateralized credit card. Access is gated during beta — ineligible calls return 403 `Forbidden`.
+
+Three endpoints — also exposed as MCP tools (`get_sponge_card_details`, `fund_sponge_card`, `withdraw_sponge_card`). Environment (dev vs production) is fixed by your API key type: `sponge_test_*` → dev sandbox, `sponge_live_*` → production.
+
+#### Fetch card details (encrypted)
+
+```bash
+curl -sS "$SPONGE_API_URL/api/sponge-card/details" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Accept: application/json"
+```
+
+Returns `last4`, `expiration_month`, `expiration_year`, `type`, `status`, `spending_power_cents`, plus an encrypted PAN + CVC blob and a one-time `secret_key`. Plaintext card numbers never exist on the backend — **you must decrypt locally** with AES-128-GCM:
+
+```js
+const { webcrypto } = require("crypto");
+async function decrypt({ iv, data }, secretKeyHex) {
+  const key = await webcrypto.subtle.importKey(
+    "raw",
+    Buffer.from(secretKeyHex, "hex"),
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"],
+  );
+  const pt = await webcrypto.subtle.decrypt(
+    { name: "AES-GCM", iv: Buffer.from(iv, "base64") },
+    key,
+    Buffer.from(data, "base64"),
+  );
+  return new TextDecoder().decode(pt);
+}
+const pan = await decrypt(result.encrypted_pan, result.secret_key);
+const cvc = await decrypt(result.encrypted_cvc, result.secret_key);
+```
+
+Treat the decrypted PAN/CVC as highly sensitive: do not log, persist, or echo to non-cardholder destinations.
+
+#### Fund the card
+
+Send USDC from your wallet to the collateral deposit address to increase the card's spending power. Sponge credits the deposit once the transfer confirms (1–2 blocks on EVM, seconds on Solana).
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/fund" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":"100","chain":"base"}'
+```
+
+- `amount`: USDC in human-readable units (e.g. `"100"`, `"100.50"`). Positive decimal.
+- `chain`: optional. Required only if the user has more than one collateral contract. Allowed: `base`, `ethereum`, `polygon`, `arbitrum-one`, `solana`.
+
+Returns `tx_hash`, `chain_id`, `to_address`, `token_address`, `amount`.
+
+#### Withdraw from the card
+
+Pull USDC back from the collateral contract to your wallet. Reduces the card's spending power.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/withdraw" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":"50.25","chain":"base"}'
+```
+
+- `amount`: USD with max 2 decimal places (e.g. `"50"`, `"50.25"`). Positive.
+- `chain`: optional — same rules as `fund`.
+
+Returns `tx_hash`, `chain_id`, `amount`, `recipient_address`.
+
+Notes:
+- Solana withdrawals run as two transactions (submit admin signature, then withdraw); only the final tx hash is returned.
+- Sponge rate-limits withdrawal authorizations. If a previous signature is still active you'll get a "retry after N seconds" error.
+
+**Scopes:** `get_sponge_card_details` requires `payment:read`. `fund_sponge_card` and `withdraw_sponge_card` require `wallet:write` + `transaction:sign` + `transaction:write`.
 
 ### Crypto Onramp
 
