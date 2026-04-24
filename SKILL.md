@@ -79,14 +79,14 @@ Prepaid cards (Laso Finance, US only):
   MCP: search_prepaid_card_merchants     -> check if a merchant accepts the card
 
 Banking (Bridge.xyz):
-  MCP: bank_onboard              -> start KYC, get hosted verification URL
-  MCP: bank_status               -> check KYC/onboarding status
-  MCP: bank_create_virtual_account -> create/get virtual bank account (USD→USDC deposits)
-  MCP: bank_get_virtual_account  -> get deposit instructions for a wallet
-  MCP: bank_list_external_accounts -> list linked bank accounts
-  MCP: bank_add_external_account -> link US bank account for ACH or wire payouts
-  MCP: bank_send                -> off-ramp: send USD to linked bank via ACH or wire (USDC→USD)
-  MCP: bank_list_transfers       -> list fiat transfer history
+  POST /api/bank/onboard          -> start KYC, get hosted verification URL
+  GET  /api/bank/status           -> check KYC/onboarding status
+  POST /api/bank/virtual-account  -> create/get virtual bank account (USD→USDC deposits)
+  GET  /api/bank/virtual-account  -> get deposit instructions for a wallet
+  GET  /api/bank/external-accounts -> list linked bank accounts
+  POST /api/bank/external-accounts -> link US bank account for ACH or wire payouts
+  POST /api/bank/send             -> off-ramp: send USD to linked bank via ACH or wire (USDC→USD)
+  GET  /api/bank/transfers        -> list fiat transfer history
 
 Trading & shopping:
   POST /api/polymarket                     -> Polymarket prediction market trading
@@ -193,7 +193,7 @@ Workflow:
 ### 1) Agent Registration (AI agents only)
 
 There are two modes:
-- **Standard device flow** (default): human must approve before the API key is returned.
+- **Standard auth flow** (default): human must approve before the API key is returned.
 - **Agent-first** (`agentFirst: true`): agent receives the API key immediately, and the human can claim later.
 
 **Step 1 — Start registration (agent-first recommended)**
@@ -221,7 +221,7 @@ Claim link format:
 - `verificationUriComplete` (example path: `/device?code=ABCD-1234`)
 - The base URL is the frontend (prod or local), so just pass the full `verificationUriComplete` to the human.
 
-**Step 3 — Poll for completion (standard device flow only)**
+**Step 3 — Poll for completion (standard auth flow only)**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
   -H "Sponge-Version: 0.2.1" \
@@ -235,7 +235,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
 
 On success, the response includes `apiKey`. Save it to `~/.spongewallet/credentials.json` and use it as `SPONGE_API_KEY`.
 
-Note: In **agent-first mode**, you already have the `apiKey` from Step 1. The device token will remain pending until the human claims.
+Note: In **agent-first mode**, you already have the `apiKey` from Step 1. The auth token will remain pending until the human claims.
 
 ### 2) Human Login (existing accounts only)
 
@@ -246,7 +246,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/authorization" \
   -H "Content-Type: application/json" \
   -d '{
     "clientId":"spongewallet-skill",
-    "scope":"wallet:read wallet:write transaction:sign transaction:write"
+    "scope":"mcp:tools"
   }'
 ```
 
@@ -264,7 +264,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
 
 ## Tool Call Pattern
 
-All tool calls are plain REST requests with JSON payloads.
+Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are MCP-only tools and are not callable via direct REST requests.
 
 **Common headers (include on EVERY request)**
 ```bash
@@ -315,6 +315,14 @@ All tool calls are plain REST requests with JSON payloads.
 | **Sponge Card details** (admin) | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
 | **Fund Sponge Card** (admin) | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
 | **Withdraw from Sponge Card** (admin) | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
+| Banking onboard | POST | `/api/bank/onboard` | Body: optional `wallet_id`, `redirect_uri`, `customer_type`, `agentId` |
+| Banking status | GET | `/api/bank/status` | Query: optional `agentId` |
+| Create virtual bank account | POST | `/api/bank/virtual-account` | Body: `wallet_id`, optional `agentId` |
+| Get virtual bank account | GET | `/api/bank/virtual-account` | Query: optional `wallet_id`, `agentId` |
+| List linked bank accounts | GET | `/api/bank/external-accounts` | Query: optional `agentId` |
+| Link bank account | POST | `/api/bank/external-accounts` | Body (snake_case): `bank_name`, `account_owner_name`, `routing_number`, `account_number`, `checking_or_savings`, `street_line_1`, optional `street_line_2`, `city`, `state`, `postal_code`, optional `agentId` |
+| Send USD to bank | POST | `/api/bank/send` | Body: `wallet_id`, `external_account_id`, `amount`, optional `payment_rail` (ach/wire), `agentId` |
+| List bank transfers | GET | `/api/bank/transfers` | Query: optional `transfer_id`, `agentId` |
 | Crypto onramp | POST | `/api/onramp/crypto` | Body: `wallet_address`; optional: `provider` (auto/stripe/coinbase), `chain` (base/solana/polygon), `fiat_amount`, `fiat_currency` |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
 | Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
@@ -765,7 +773,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
     "agentFirst": true
   }'
 ```
-Share the claim URL with your human, then store the `apiKey` immediately (agent-first). For standard device flow, poll for the token after approval.
+Share the claim URL with your human, then store the `apiKey` immediately (agent-first). For standard auth flow, poll for the token after approval.
 
 ### 2) Check balance
 ```bash
@@ -1140,14 +1148,14 @@ If the `parameters` / `instructions` from step 2 aren't enough to build the requ
 
 Returns `{ spec, sourceUrl, format, status }`. `status: "ok"` means the spec was found; `status: "not_found"` means none was discovered — fall back to `docsUrl` or your best guess. Only call this tool when you actually need the spec; specs can be large.
 
-## Banking (Bridge.xyz) — MCP only
+## Banking (Bridge.xyz)
 
-Receive and send USD via bank accounts. All tools are MCP-only (not REST).
+Receive and send USD via bank accounts over REST.
 
 ### Setup flow
 
-1. **Onboard** — `bank_onboard` to start KYC. Returns a hosted URL for identity verification unless the customer is already active.
-2. **Check status** — `bank_status` to poll KYC progress (pending → approved).
+1. **Onboard** — `POST /api/bank/onboard` to start KYC. Returns a hosted URL for identity verification unless the customer is already active.
+2. **Check status** — `GET /api/bank/status` to poll KYC progress (pending → approved).
 3. Once approved, you can:
    - **Receive USD as USDC** (on-ramp): create a virtual bank account, get deposit instructions, share them with sender
    - **Send USD to a bank** (off-ramp): link an external bank account, then send wire/ACH
@@ -1156,10 +1164,10 @@ Receive and send USD via bank accounts. All tools are MCP-only (not REST).
 
 ```
 # 1. Create or get virtual account for a wallet (idempotent — returns existing if one exists)
-MCP: bank_create_virtual_account  { wallet_id: "<uuid>" }
+POST /api/bank/virtual-account  { "wallet_id": "<uuid>" }
 
 # 2. Get deposit instructions (account number, routing number)
-MCP: bank_get_virtual_account     { wallet_id: "<uuid>" }
+GET /api/bank/virtual-account?wallet_id=<uuid>
 ```
 
 When someone sends USD to the virtual account's bank details, it's automatically converted to USDC and deposited into the wallet. Supported chains: Ethereum, Base, Solana.
@@ -1168,20 +1176,28 @@ When someone sends USD to the virtual account's bank details, it's automatically
 
 ```
 # 1. Link a US bank account
-MCP: bank_add_external_account  {
-  bank_name, account_owner_name, routing_number, account_number,
-  checking_or_savings, street_line_1, city, state, postal_code
+POST /api/bank/external-accounts  {
+  "bank_name":"Bank of America",
+  "account_owner_name":"Jane Doe",
+  "routing_number":"021000021",
+  "account_number":"1234567890",
+  "checking_or_savings":"checking",
+  "street_line_1":"123 Main St",
+  "city":"San Francisco",
+  "state":"CA",
+  "postal_code":"94105"
 }
 
 # 2. List linked accounts (get external_account_id)
-MCP: bank_list_external_accounts
+GET /api/bank/external-accounts
 
 # 3. Send USD via ACH or wire (converts USDC from wallet → USD)
-MCP: bank_send  { wallet_id, external_account_id, amount: "100.00", payment_rail: "ach" }
-MCP: bank_send  { wallet_id, external_account_id, amount: "100.00", payment_rail: "wire" }
+POST /api/bank/send  { "wallet_id":"<uuid>", "external_account_id":"<uuid>", "amount":"100.00", "payment_rail":"ach" }
+POST /api/bank/send  { "wallet_id":"<uuid>", "external_account_id":"<uuid>", "amount":"100.00", "payment_rail":"wire" }
 
 # 4. Check transfer status
-MCP: bank_list_transfers  { transfer_id?: "<uuid>" }
+GET /api/bank/transfers
+GET /api/bank/transfers?transfer_id=<uuid>
 ```
 
 ACH settlement: typically 1-3 business days. Wire payouts are typically faster.
