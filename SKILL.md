@@ -15,7 +15,7 @@ Auth:   Authorization: Bearer <SPONGE_API_KEY>
 Ver:    Sponge-Version: 0.2.1  (REQUIRED on every request)
 Docs:   This file is canonical (skills guide + params)
 
-Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + prepaid cards + banking + virtual cards + onramp
+Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + banking + Sponge Card + onramp
 
 Paid services (search, image gen, scraping, AI, data, etc.):
   GET  /api/discover                     -> Step 1: find services by query/category
@@ -40,8 +40,6 @@ Wallet & tokens:
   POST /api/transactions/base-swap       -> Base swap (0x)
   POST /api/transactions/tempo-swap      -> Tempo swap (StablecoinExchange DEX)
   POST /api/transactions/bridge          -> Bridge (Relay)
-  MCP: consolidate_usdc                  -> Consolidate USDC from all chains into one
-  MCP: token_chart                       -> Token price charts (GeckoTerminal)
   GET  /api/solana/tokens                -> list SPL tokens
   GET  /api/solana/tokens/search         -> search Jupiter token list
   GET  /api/transactions/status/:txHash  -> transaction status
@@ -56,9 +54,9 @@ Secrets & checkout data:
   POST /api/agent-keys                   -> store non-card service keys (`service=credit_card` is rejected)
 
 Virtual cards (enrolled cards):
-  MCP: get_virtual_card                  -> issue virtual card for a specific amount/merchant
-  MCP: get_card_session                  -> get secure session to retrieve vaulted card details
-  MCP: report_card_usage                 -> report outcome of a purchase attempt
+  POST /api/virtual-cards                -> issue a virtual card scoped to amount and merchant
+  POST /api/card-sessions                -> get a short-lived session to retrieve vaulted card details
+  POST /api/card-usage                   -> report outcome of a purchase attempt
 
 Sponge Card (beta preview):
   GET  /api/sponge-card/status           -> onboarding/consent/card readiness status
@@ -76,11 +74,6 @@ Planning & proposals:
   POST /api/plans/submit                 -> submit multi-step plan
   POST /api/plans/approve                -> approve and execute plan
   POST /api/trades/propose               -> propose single swap for approval
-
-Prepaid cards (Laso Finance, US only):
-  MCP: order_prepaid_card                -> order non-reloadable prepaid Visa ($5-$1000, charged in USDC)
-  MCP: get_prepaid_card                  -> get card status/details (poll until "ready")
-  MCP: search_prepaid_card_merchants     -> check if a merchant accepts the card
 
 Banking (Bridge.xyz):
   POST /api/bank/onboard          -> start KYC, get hosted verification URL
@@ -111,11 +104,11 @@ Errors: HTTP status + JSON error message
 
 # Sponge Wallet API - Agent Skills Guide
 
-This skill is **doc-only**. There is no local CLI. Most capabilities are exposed via the Sponge Wallet REST API, and MCP-only tools are labeled explicitly in this file.
+This skill is **doc-only**. There is no local CLI. It documents the public Sponge Wallet REST API only.
 
 ## What you can do with Sponge
 
-1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base/Ethereum/Polygon/Arbitrum/Tempo, bridge cross-chain, view token price charts
+1. **Manage crypto** — check balances, transfer tokens (EVM, Solana, and Tempo), swap on Solana/Base/Ethereum/Polygon/Arbitrum/Tempo, bridge cross-chain
    - For pre-built Solana transactions returned by an external API, use `POST /api/solana/sign-and-send`.
    - Use `POST /api/solana/sign` only when you explicitly need a partially/fully signed transaction back without broadcasting.
 2. **Create payment links** — generate reusable x402 payment URLs and check payment status
@@ -123,12 +116,12 @@ This skill is **doc-only**. There is no local CLI. Most capabilities are exposed
    1. `GET /api/discover?query=...` — find a service
    2. `GET /api/discover/{serviceId}` — get its endpoints, params, and payment config **(do not skip)**
    3. `POST /api/paid/fetch` — call the endpoint (auto-selects x402 USDC or MPP on Tempo based on service). Alternatively use `POST /api/x402/fetch` (USDC only) or `POST /api/mpp/fetch` (MPP on Tempo; asset negotiated per endpoint, typically USDC.e).
-   - If the target endpoint also requires SIWE auth, generate the signature first with MCP tool `generate_siwe` and include its output in the fetch headers.
+   - If the target endpoint also requires SIWE auth, call `POST /api/siwe/generate` first and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 6. **Shop on Amazon** — checkout with configured Amazon account
-7. **Store encrypted card data for checkout** — use the dedicated card tool (`store_credit_card` / `POST /api/credit-cards`)
-8. **Virtual cards** — issue virtual cards for web purchases from enrolled cards
+7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
+8. **Use enrolled virtual cards** — issue scoped card credentials for a purchase or retrieve vaulted card details through a short-lived session
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
@@ -172,10 +165,9 @@ export SPONGE_API_URL="https://api.wallet.paysponge.com"
 export SPONGE_API_KEY="$(jq -r .apiKey ~/.spongewallet/credentials.json)"
 ```
 
-## MCP SIWE Tool: `generate_siwe`
+## SIWE Signature
 
-Use this MCP tool when an external API requires SIWE (EIP-4361) authentication.
-REST wrapper endpoint: `POST /api/siwe/generate`.
+Use `POST /api/siwe/generate` when an external API requires SIWE (EIP-4361) authentication.
 
 Required args:
 - `domain`
@@ -188,9 +180,9 @@ Returns:
 - `message`, `signature`, `address`, `chainId`, `nonce`, `issuedAt`, `expirationTime`, `base64SiweMessage`
 
 Workflow:
-1. Call `generate_siwe` with the exact target `domain` and `uri`.
+1. Call `POST /api/siwe/generate` with the exact target `domain` and `uri`.
 2. Build the `Authorization` header using returned `signature` and `base64SiweMessage` in the target API's expected format.
-3. Pass that header to `/api/x402/fetch` (or `x402_fetch` MCP tool) when calling the protected endpoint.
+3. Pass that header to `/api/paid/fetch` or `/api/x402/fetch` when calling the protected endpoint.
 
 ## CRITICAL: AI Agents Must Use `register`, NOT `login`
 
@@ -249,8 +241,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/authorization" \
   -H "Sponge-Version: 0.2.1" \
   -H "Content-Type: application/json" \
   -d '{
-    "clientId":"spongewallet-skill",
-    "scope":"mcp:tools"
+    "clientId":"spongewallet-skill"
   }'
 ```
 
@@ -268,7 +259,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
 
 ## Tool Call Pattern
 
-Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are MCP-only tools and are not callable via direct REST requests.
+Use the public REST endpoints documented in this file. Internal-only tools are intentionally omitted.
 
 **Common headers (include on EVERY request)**
 ```bash
@@ -297,12 +288,13 @@ Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are
 | Solana swap execute | POST | `/api/transactions/swap/execute` | Body: `quoteId` |
 | Base swap | POST | `/api/transactions/base-swap` | Body: `chain`, `inputToken`, `outputToken`, `amount`, `slippageBps` |
 | Tempo swap | POST | `/api/transactions/tempo-swap` | Body: `chain` (tempo), `inputToken`, `outputToken`, `amount`, `slippageBps` |
-| Token chart | MCP only | `token_chart` | Args: `network` (solana/base/eth), `token`, optional `interval` (5m/15m/1h/4h/1d), `limit` |
 | Bridge | POST | `/api/transactions/bridge` | Body: `sourceChain`, `destinationChain`, `token`, `amount`, `destinationToken`, `recipientAddress` |
-| Consolidate USDC | MCP only | `consolidate_usdc` | Args: `destination_chain`, `min_amount` (optional, default `"1"`) |
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
+| Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
+| Create card session | POST | `/api/card-sessions` | Body: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id`, `agentId` |
+| Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
 | Store service key (non-card) | POST | `/api/agent-keys` | Body: `service`, `key`, optional `label`, `metadata` (`service=credit_card` is rejected) |
 | List stored keys | GET | `/api/agent-keys` | Query: `agentId` (optional) |
 | Get stored key value | GET | `/api/agent-keys/value` | Query: `service` (use `credit_card` for card details) |
@@ -313,9 +305,6 @@ Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are
 | **Step 3 alt: x402 fetch** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
 | **Step 3 alt: MPP fetch** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | SIWE signature | POST | `/api/siwe/generate` | Body: `domain`, `uri`; optional: `statement`, `nonce`, `chain_id`, `expiration_time`, `not_before`, `request_id`, `resources` |
-| Virtual card | MCP only | `get_virtual_card` | Args: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id` |
-| Card session | MCP only | `get_card_session` | Args: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id` |
-| Report card usage | MCP only | `report_card_usage` | Args: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason` |
 | **Sponge Card status** (admin) | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
 | **Onboard Sponge Card** (admin) | POST | `/api/sponge-card/onboard` | Body: KYC fields, consent booleans, optional `email`, `phone_*`, `agentId` |
 | **Accept Sponge Card terms** (admin) | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
@@ -339,11 +328,6 @@ Use REST for entries labeled with `GET`/`POST` paths. Entries labeled `MCP:` are
 | Submit plan | POST | `/api/plans/submit` | Body: `title`, `reasoning`, `steps` (see Planning section) |
 | Approve plan | POST | `/api/plans/approve` | Body: `plan_id` |
 | Propose trade | POST | `/api/trades/propose` | Body: `input_token`, `output_token`, `amount`, `reason` |
-| **Order prepaid card** | MCP only | `order_prepaid_card` | Args: `amount` (5–1000). NON-RELOADABLE, NON-REFUNDABLE. |
-| **Get prepaid card** | MCP only | `get_prepaid_card` | Args: `card_id` (optional, omit to list all) |
-| **Search card merchants** | MCP only | `search_prepaid_card_merchants` | Args: `query` (merchant name) |
-| MPP session | MCP only | `mpp_session` | Args: `action` (start/request/close/list); see MPP Session section |
-
 Note: most request bodies use camelCase (e.g., `inputToken`, `slippageBps`). Card secret endpoints and Sponge Card API endpoints use snake_case fields (e.g., `card_number`, `cardholder_name`, `first_name`, `postal_code`).
 
 > **CRITICAL — Paid Services require ALL 3 steps in order:**
@@ -507,9 +491,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
 
 ### EVM Swaps (Ethereum, Polygon, Arbitrum)
 
-In addition to Solana swaps and Base swaps, swaps are available on Ethereum, Polygon, and Arbitrum via the MCP tools `ethereum_swap`, `polygon_swap`, and `arbitrum_swap`. These use the 0x Protocol aggregator for optimal pricing.
-
-The unified `POST /api/transactions/swap` REST endpoint also supports EVM chains — pass the chain name (e.g., `base`, `ethereum`, `polygon`, `arbitrum-one`) in the `chain` field.
+The unified `POST /api/transactions/swap` REST endpoint supports EVM chains. Pass the chain name (e.g., `base`, `ethereum`, `polygon`, `arbitrum-one`) in the `chain` field.
 
 ### Swap Quote & Execute (Solana)
 
@@ -520,32 +502,11 @@ For Solana swaps, you can get a quote before executing:
 
 Quotes expire in ~30 seconds. Use this when you want to preview pricing or get user confirmation before swapping.
 
-### Token Price Charts
-
-Get price chart data for any token on Solana, Base, or Ethereum via GeckoTerminal. MCP-only tool: `token_chart`.
-
-Parameters:
-- `network`: `"solana"`, `"base"`, or `"eth"`
-- `token`: Token address or symbol (e.g., `"SOL"`, `"ETH"`, `"USDC"`, or a contract address)
-- `interval`: Candle interval — `"5m"`, `"15m"`, `"1h"` (default), `"4h"`, `"1d"`
-- `limit`: Number of candles (default 100, max 1000)
-
-Returns an ASCII sparkline, OHLC price summary, and a link to the web chart.
-
-### Virtual Cards (Enrolled Cards)
-
-If the user has enrolled a card via the dashboard, you can issue virtual cards for specific purchases.
-
-**MCP tools:**
-- `get_virtual_card` — issue a virtual card scoped to a specific amount and merchant. Returns card number, expiry, CVC.
-- `get_card_session` — get a short-lived session to retrieve full card details (PAN, expiry, CVC) from a vaulted payment method. Returns `session_key` and `retrieve_url`. Immediately fetch: `GET {retrieve_url}` with header `BT-API-KEY: {session_key}`.
-- `report_card_usage` — report the outcome (success/failed/cancelled) of a purchase attempt that used a stored card. Logs usage and updates spending records.
-
 ### Sponge Card (beta preview)
 
 The Sponge Card is a stablecoin-collateralized credit card. Access is gated during beta — ineligible calls return 403 `Forbidden`.
 
-These endpoints mirror the MCP tools for onboarding, card creation, card details, funding, and withdrawal. Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -> dev sandbox, `sponge_live_*` -> production.
+Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -> dev sandbox, `sponge_live_*` -> production.
 
 The full no-UI flow is:
 
@@ -720,7 +681,7 @@ Notes:
 - Solana withdrawals run as two transactions (submit admin signature, then withdraw); only the final tx hash is returned.
 - Sponge rate-limits withdrawal authorizations. If a previous signature is still active you'll get a "retry after N seconds" error.
 
-**Scopes:** `get_sponge_card_status` and `get_sponge_card_details` require `payment:read`. `onboard_sponge_card` requires `wallet:write` + `payment:write`. `accept_sponge_card_terms` and `create_sponge_card` require `payment:write`. `fund_sponge_card` and `withdraw_sponge_card` require `wallet:write` + `transaction:sign` + `transaction:write`.
+**Scopes:** `/api/sponge-card/status` and `/api/sponge-card/details` require `payment:read`. `/api/sponge-card/onboard` requires `wallet:write` + `payment:write`. `/api/sponge-card/terms` and `/api/sponge-card/create-card` require `payment:write`. `/api/sponge-card/fund` and `/api/sponge-card/withdraw` require `wallet:write` + `transaction:sign` + `transaction:write`.
 
 ### Crypto Onramp
 
@@ -762,17 +723,6 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
   }'
 ```
 
-### MPP Session (MCP only)
-
-For multiple paid requests to the same service, use `mpp_session` to open a session with a budget:
-
-Do **not** use `mpp_session` just because the URL is on an MPP/Tempo route. Many MPP endpoints are still one-shot charge flows. Default to `paid_fetch` first; if the response shows `payment_details.intent: "session"` or the endpoint is clearly SSE/streaming, then reuse that endpoint with `mpp_session`.
-
-1. **Start:** `mpp_session(action: "start", max_deposit: "10")` — opens session with budget ceiling
-2. **Request:** `mpp_session(action: "request", session_id: "...", url: "...", method: "POST", body: {...})` — makes paid requests within the session
-3. **Close:** `mpp_session(action: "close", session_id: "...")` — settles and releases unused deposit
-4. **List:** `mpp_session(action: "list")` — inspect existing sessions
-
 ### Paid Fetch (Unified)
 
 `POST /api/paid/fetch` is the recommended fetch tool — it auto-selects the best payment route (x402 USDC on Base/Solana/Ethereum, or MPP on Tempo with the endpoint's chosen asset) based on the service's supported protocols and your wallet balances.
@@ -792,41 +742,9 @@ curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
 
 The `chain` parameter is a hint for which wallet to spend from, not a hard requirement — the system falls back automatically if the endpoint doesn't support the requested chain.
 
-### Prepaid Cards (Laso Finance)
-
-Order prepaid Visa debit cards funded with USDC on Base. US merchants only.
-
-**CRITICAL: Cards are NON-RELOADABLE and NON-REFUNDABLE.** Only order a card when you know the exact purchase amount and are ready to buy. Do not order cards speculatively.
-
-**WARNING: Prepaid debit cards are NOT accepted everywhere.** Always ask the user what they want to buy and let them know that not all merchants accept prepaid debit cards. Recommend checking with `search_prepaid_card_merchants` before ordering.
-
-**MCP tools:**
-- `order_prepaid_card(amount)` — order a card ($5–$1000). Charges the amount in USDC immediately.
-- `get_prepaid_card(card_id?)` — get card status/details. Omit card_id to list all cards.
-- `search_prepaid_card_merchants(query)` — check if a merchant accepts the card. Recommended before ordering.
-
-Note: `get_prepaid_card` is only for Laso prepaid cards. Do not use it to retrieve user-saved personal card details.
-
-**Recommended workflow:**
-1. **Ask the user what they want to buy** — get the merchant/store name
-2. **Let the user know that prepaid debit cards are not accepted everywhere**
-3. `search_prepaid_card_merchants(query: "MerchantName")` — check if the merchant accepts the card and share the result with the user
-4. Confirm the exact amount with the user
-5. `order_prepaid_card(amount: <exact purchase amount>)` — charges USDC on Base
-6. `get_prepaid_card(card_id: "<card_id>")` — poll every 2-3 seconds until status is `"ready"` (~7-10 seconds)
-7. Use the returned card details (number, CVV, expiry) to complete the purchase
-
-**Costs:**
-- Auth: $0.001 USDC (automatic, cached for ~1 hour)
-- Card: exact card amount in USDC (e.g., $25 card = 25 USDC)
-
-**Scopes:** `order_prepaid_card` requires `wallet:write` + `transaction:sign`. Read tools require `wallet:read`.
-
 ### Credit Card Secret Storage
 
-Use the dedicated card tool for payment card data:
-- MCP: `store_credit_card`
-- REST: `POST /api/credit-cards`
+Use `POST /api/credit-cards` for payment card data.
 
 Do not use `store_key` (or `POST /api/agent-keys`) for cards. `service: "credit_card"` is intentionally rejected there.
 
@@ -842,10 +760,9 @@ For chat agents, collect card details one field at a time in this exact order:
 Rules:
 - Ask exactly one missing field per message.
 - Re-ask only the field that is missing or invalid.
-- Do not call `store_credit_card` until all required fields are present.
+- Do not submit the card until all required fields are present.
 - For user-saved personal card retrieval, call only `get_key_value(service: "credit_card")` (or `GET /api/agent-keys/value?service=credit_card`) and return full values.
 - Do not call `get_key_list` for personal card retrieval.
-- Do not call `get_prepaid_card` for personal card retrieval.
 
 Example (store + retrieve):
 ```bash
@@ -868,6 +785,71 @@ curl -sS "$SPONGE_API_URL/api/agent-keys/value?service=credit_card" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
+```
+
+### Virtual Cards (Enrolled Cards)
+
+If the user has enrolled a card via the dashboard, you can issue virtual cards for specific purchases.
+
+#### Issue a scoped virtual card
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/virtual-cards" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount":"49.99",
+    "merchant_name":"Netflix",
+    "merchant_url":"https://www.netflix.com",
+    "merchant_country_code":"US",
+    "description":"Monthly subscription"
+  }'
+```
+
+Returns fresh card credentials (`card_number`, `expiration_month`, `expiration_year`, `cvc`) plus `expires_at` and `instruction_id`.
+
+#### Create a short-lived card session
+
+Use this when you need to retrieve full vaulted card details from Basis Theory. The session expires quickly, so fetch the retrieve URL immediately with the returned `session_key`.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/card-sessions" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount":"49.99",
+    "merchant_name":"Netflix",
+    "merchant_url":"https://www.netflix.com"
+  }'
+```
+
+Then immediately fetch the returned `retrieve_url`:
+
+```bash
+curl -sS "<retrieve_url>" \
+  -H "BT-API-KEY: <session_key>"
+```
+
+The card data is returned in `data.number`, `data.expiration_month`, `data.expiration_year`, and `data.cvc`.
+
+#### Report card usage
+
+Use this after checkout to log the outcome of a purchase attempt.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/card-usage" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "payment_method_id":"pm_123",
+    "merchant_name":"Netflix",
+    "amount":"49.99",
+    "currency":"USD",
+    "status":"success"
+  }'
 ```
 
 ## Quick Start
@@ -969,24 +951,6 @@ curl -sS -X POST "$SPONGE_API_URL/api/transactions/bridge" \
     "destinationToken":"ETH"
   }'
 ```
-
-### Consolidate USDC from all chains
-
-Consolidate scattered USDC balances across multiple chains into a single destination chain. This capability is **MCP-only**. There is currently **no REST route** for it. The tool discovers USDC on every chain, skips balances below `min_amount`, and bridges each qualifying balance sequentially.
-
-```json
-{
-  "tool": "consolidate_usdc",
-  "arguments": {
-    "destination_chain": "base",
-    "min_amount": "1"
-  }
-}
-```
-
-Response includes: `balances` (per-chain discovery results), `bridges` (successful bridge txs with tracking URLs), `errors` (failed bridges), `totalConsolidated`, `totalBridges`.
-
-Use this only through MCP: `consolidate_usdc` with `destination_chain` and optional `min_amount`.
 
 ### Check transaction status
 ```bash
@@ -1246,16 +1210,9 @@ The fetch endpoint handles the entire payment flow automatically:
 4. Retries the request with the payment header
 5. Returns the final API response with `payment_made` and `payment_details`
 
-If `payment_details.intent` comes back as `"session"`, that means the endpoint supports Tempo session payments. For follow-up calls to that same endpoint, switch to `mpp_session` instead of repeatedly creating one-shot calls.
-
 #### Fetching an OpenAPI spec when you need it
 
-If the `parameters` / `instructions` from step 2 aren't enough to build the request body — or the user points at a service that `GET /api/discover` doesn't know about — use the `get_openapi_spec` MCP tool. It accepts one of:
-
-- `service_id`: a catalog service id (returns the cached spec, no network fetch).
-- `url`: either a direct OpenAPI URL (e.g. `https://api.example.com/openapi.json`) or a base URL. For a base URL, common paths are probed automatically (`/openapi.json`, `/openapi.yaml`, `/.well-known/x402`, `/docs/openapi.json`, `/swagger.json`, etc.).
-
-Returns `{ spec, sourceUrl, format, status }`. `status: "ok"` means the spec was found; `status: "not_found"` means none was discovered — fall back to `docsUrl` or your best guess. Only call this tool when you actually need the spec; specs can be large.
+If the `parameters` / `instructions` from step 2 are not enough to build the request body, fall back to the service `docsUrl` returned by `GET /api/discover/{serviceId}` or the provider's official API docs.
 
 ## Banking (Bridge.xyz)
 
