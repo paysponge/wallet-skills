@@ -53,9 +53,9 @@ Secrets & checkout data:
   DELETE /api/agent-keys                 -> delete saved secret by service (use `service=credit_card` to remove personal saved card)
   POST /api/agent-keys                   -> store non-card service keys (`service=credit_card` is rejected)
 
-Virtual cards (enrolled cards):
-  POST /api/virtual-cards                -> issue a virtual card scoped to amount and merchant
-  POST /api/card-sessions                -> get a short-lived session to retrieve vaulted card details
+Cards (vaulted + enrolled):
+  POST /api/cards                        -> fetch the user's card (Sponge Card or vaulted card); auto-detects source
+  POST /api/virtual-cards                -> issue a per-transaction virtual card scoped to amount and merchant
   POST /api/card-usage                   -> report outcome of a purchase attempt
 
 Sponge Card (beta preview):
@@ -121,7 +121,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 6. **Shop on Amazon** — checkout with configured Amazon account
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
-8. **Use enrolled virtual cards** — issue scoped card credentials for a purchase or retrieve vaulted card details through a short-lived session
+8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
@@ -292,8 +292,8 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
+| **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
-| Create card session | POST | `/api/card-sessions` | Body: optional `amount`, `currency`, `merchant_name`, `merchant_url`, `payment_method_id`, `agentId` |
 | Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
 | Store service key (non-card) | POST | `/api/agent-keys` | Body: `service`, `key`, optional `label`, `metadata` (`service=credit_card` is rejected) |
 | List stored keys | GET | `/api/agent-keys` | Query: `agentId` (optional) |
@@ -618,7 +618,7 @@ curl -sS "$SPONGE_API_URL/api/sponge-card/details" \
   -H "Accept: application/json"
 ```
 
-Returns `last4`, `expiration_month`, `expiration_year`, `type`, `status`, `spending_power_cents`, plus an encrypted PAN + CVC blob and a one-time `secret_key`. Plaintext card numbers never exist on the backend — **you must decrypt locally** with AES-128-GCM:
+Returns `last4`, `expiration_month`, `expiration_year`, `type`, `status`, `spending_power_cents`, `email`, `phone`, plus an encrypted PAN + CVC blob and a one-time `secret_key`. Plaintext card numbers never exist on the backend — **you must decrypt locally** with AES-128-GCM:
 
 ```js
 const { webcrypto } = require("crypto");
@@ -787,11 +787,61 @@ curl -sS "$SPONGE_API_URL/api/agent-keys/value?service=credit_card" \
   -H "Accept: application/json"
 ```
 
-### Virtual Cards (Enrolled Cards)
+### Cards (Vaulted + Enrolled)
 
-If the user has enrolled a card via the dashboard, you can issue virtual cards for specific purchases.
+#### Fetch the user's card
 
-#### Issue a scoped virtual card
+`POST /api/cards` is the single entry point for retrieving the user's card. It auto-detects the card source:
+
+- **Sponge Card (Rain)** — credit card backed by on-chain collateral. Returns encrypted PAN/CVC + a per-call symmetric key (decrypt client-side with AES-128-GCM).
+- **Basis Theory vaulted card** — a card the user vaulted via the dashboard. Returns a short-lived BT session you must immediately fetch.
+
+If the user has only one source enrolled, the endpoint returns that card directly. If both sources are enrolled and `card_type` is omitted, the response is `{ "status": "selection_required", "available_cards": [...] }` — ask the user which they'd like, then re-call with `card_type` set.
+
+```bash
+# Auto-detect
+curl -sS -X POST "$SPONGE_API_URL/api/cards" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Explicit Sponge Card
+curl -sS -X POST "$SPONGE_API_URL/api/cards" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{ "card_type": "rain" }'
+
+# Explicit BT vaulted card with merchant context for spending limits
+curl -sS -X POST "$SPONGE_API_URL/api/cards" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "card_type": "basis_theory_vaulted",
+    "amount": "49.99",
+    "merchant_name": "Netflix",
+    "merchant_url": "https://www.netflix.com"
+  }'
+```
+
+Response shape (Sponge Card branch): `card_type:"rain"`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `email`, `phone`, `decryption_instructions`.
+
+Response shape (BT branch): `card_type:"basis_theory_vaulted"`, `session_key`, `retrieve_url`, `token_id`, `expires_at`, `card_brand`, `card_last4`, `payment_method_id`, `billing_address`, `email`, `phone`. Immediately fetch the BT card data:
+
+```bash
+curl -sS "<retrieve_url>" \
+  -H "BT-API-KEY: <session_key>"
+```
+
+The card data is returned in `data.number`, `data.expiration_month`, `data.expiration_year`, and `data.cvc`.
+
+For per-transaction virtual cards, use `/api/virtual-cards` (see below).
+
+#### Issue a per-transaction virtual card
+
+Use this when you need card credentials scoped to a specific merchant + amount (e.g., a one-shot payment). For retrieving an already-vaulted card, prefer `POST /api/cards`.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/virtual-cards" \
@@ -808,31 +858,6 @@ curl -sS -X POST "$SPONGE_API_URL/api/virtual-cards" \
 ```
 
 Returns fresh card credentials (`card_number`, `expiration_month`, `expiration_year`, `cvc`) plus `expires_at` and `instruction_id`.
-
-#### Create a short-lived card session
-
-Use this when you need to retrieve full vaulted card details from Basis Theory. The session expires quickly, so fetch the retrieve URL immediately with the returned `session_key`.
-
-```bash
-curl -sS -X POST "$SPONGE_API_URL/api/card-sessions" \
-  -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount":"49.99",
-    "merchant_name":"Netflix",
-    "merchant_url":"https://www.netflix.com"
-  }'
-```
-
-Then immediately fetch the returned `retrieve_url`:
-
-```bash
-curl -sS "<retrieve_url>" \
-  -H "BT-API-KEY: <session_key>"
-```
-
-The card data is returned in `data.number`, `data.expiration_month`, `data.expiration_year`, and `data.cvc`.
 
 #### Report card usage
 
