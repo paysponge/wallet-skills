@@ -364,6 +364,8 @@ The `polymarket` endpoint is a unified tool for Polymarket trading, funding, wit
 
 | Action | Description | Required Params | Optional Params |
 |--------|-------------|-----------------|-----------------|
+| `enable` | Provision/link the Polymarket Safe without placing a trade | — | — |
+| `signup` | Alias for `enable` | — | — |
 | `status` | Check whether Polymarket is linked and view balances | — | — |
 | `search_markets` | Search Polymarket markets | `query` | `limit` |
 | `get_market` | Fetch market metadata | `market_slug` or `token_id` | — |
@@ -391,9 +393,9 @@ The `polymarket` endpoint is a unified tool for Polymarket trading, funding, wit
 - `price`: required for limit orders, decimal between `0` and `1`
 - `order_type`: `"GTC"`, `"GTD"`, `"FOK"`, or `"FAK"`; market orders only support `FOK` or `FAK`
 
-**Scopes:** Trade and funding actions (`order`, `cancel`, `set_allowances`, `deposit`, `deposit_from_wallet`, `withdraw`, `withdraw_native`, `redeem`) require `polymarket:trade`. Read actions require `wallet:read`.
+**Scopes:** Setup, trade, and funding actions (`enable`, `signup`, `order`, `cancel`, `set_allowances`, `deposit`, `deposit_from_wallet`, `withdraw`, `withdraw_native`, `redeem`) require `polymarket:trade`. Read actions require `wallet:read`.
 
-**Provisioning:** Trading and funding calls auto-link Polymarket on first use if the agent has a Polygon/EVM wallet. You can also explicitly enable it with `POST /api/agents/:id/polymarket/enable`.
+**Provisioning:** Trading and funding calls auto-link Polymarket on first use if the agent has a Polygon/EVM wallet. To sign up explicitly through the tool, call `action: "enable"` (or `action: "signup"`). You can also enable from the dashboard with `POST /api/agents/:id/polymarket/enable`.
 
 **Funding:** For cross-chain funding, use the bridge tool with `destination_chain: "polymarket"` so the route lands as USDC.e in the Polymarket Safe.
 
