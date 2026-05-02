@@ -305,13 +305,13 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | **Step 3 alt: x402 fetch** | POST | `/api/x402/fetch` | Body: `url`, `method`, `headers`, `body`, `preferred_chain` |
 | **Step 3 alt: MPP fetch** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | SIWE signature | POST | `/api/siwe/generate` | Body: `domain`, `uri`; optional: `statement`, `nonce`, `chain_id`, `expiration_time`, `not_before`, `request_id`, `resources` |
-| **Sponge Card status** (admin) | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
-| **Onboard Sponge Card** (admin) | POST | `/api/sponge-card/onboard` | Body: KYC fields, consent booleans, optional `email`, `phone_*`, `agentId` |
-| **Accept Sponge Card terms** (admin) | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
-| **Create Sponge Card** (admin) | POST | `/api/sponge-card/create-card` | Body: `billing`, `email`, `phone`, optional `shipping`, `agentId` |
-| **Sponge Card details** (admin) | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
-| **Fund Sponge Card** (admin) | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
-| **Withdraw from Sponge Card** (admin) | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
+| **Sponge Card status** | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
+| **Onboard Sponge Card** | POST | `/api/sponge-card/onboard` | Body: KYC fields, consent booleans, optional `email`, `phone_*`, `agentId` |
+| **Accept Sponge Card terms** | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
+| **Create Sponge Card** | POST | `/api/sponge-card/create-card` | Body: `billing`, `email`, `phone`, optional `shipping`, `agentId` |
+| **Sponge Card details** | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
+| **Fund Sponge Card** | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
+| **Withdraw from Sponge Card** | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
 | Banking onboard | POST | `/api/bank/onboard` | Body: optional `wallet_id`, `redirect_uri`, `customer_type`, `agentId` |
 | Banking status | GET | `/api/bank/status` | Query: optional `agentId` |
 | Create virtual bank account | POST | `/api/bank/virtual-account` | Body: `wallet_id`, optional `agentId` |
@@ -506,7 +506,7 @@ Quotes expire in ~30 seconds. Use this when you want to preview pricing or get u
 
 ### Sponge Card (beta preview)
 
-The Sponge Card is a stablecoin-collateralized credit card. Access is gated during beta — ineligible calls return 403 `Forbidden`.
+The Sponge Card is a stablecoin-collateralized credit card available to authenticated users with the required API scopes.
 
 Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -> dev sandbox, `sponge_live_*` -> production.
 
