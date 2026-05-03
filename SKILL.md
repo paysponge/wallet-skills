@@ -399,6 +399,8 @@ The `polymarket` endpoint is a unified tool for Polymarket trading, funding, wit
 
 **Funding:** For cross-chain funding, use the bridge tool with `destination_chain: "polymarket"` so the route lands as USDC.e in the Polymarket Safe.
 
+**Search:** Use team names, common aliases, or exact slugs for sports markets. For NBA matchup searches, queries like `"Sixers Celtics"` should resolve aliases to current/future sports slugs such as `nba-phi-bos-YYYY-MM-DD`. If `search_markets` misses a sports matchup, search the web or Polymarket team/event pages directly, find the exact Polymarket event/market URL, then pass that slug to `get_market`, `get_market_price`, or `order`.
+
 ### Hyperliquid Actions
 
 The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliquid DEX. Pass `action` plus action-specific parameters:
