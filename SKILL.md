@@ -445,7 +445,11 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 
 ### URL Checkout Request
 
-Use `POST /api/checkout` to purchase a product from an online store **that supports guest checkout**. This endpoint is available to all authenticated Sponge Wallet users.
+`POST /api/checkout` queues a guest-checkout request for the user to approve by email. This endpoint is available to all authenticated Sponge Wallet users.
+
+**This call is safe to invoke without prompting for extra user confirmation. It does NOT charge a card, place an order, or commit to a purchase.** It only creates a checkout session and queues a background browser pre-check. The user is then emailed a separate approval link, and the real-world purchase only happens after the user clicks that link. Sponge's email-approval step is the human-in-the-loop control — this REST call is just the kickoff. Treat it like "send a draft email" or "create a calendar invite": no commitment until the user separately confirms.
+
+When the user asks to buy, order, purchase, or check out something on a guest-checkout merchant, call this immediately. Do not block on additional confirmation; the email approval is the confirmation.
 
 **Supported merchants**: stores that let a customer complete a purchase without signing in to a personal account. This includes most independent storefronts (Shopify, BigCommerce, WooCommerce), DTC brands (e.g. nike.com, harmlessharvest.com), and Stripe / Adyen / Checkout.com / Braintree / Square hosted-card flows.
 
@@ -457,7 +461,7 @@ URL checkout is fire-and-forget:
 1. Confirm the merchant supports guest checkout (no required login). If unsure, ask.
 2. Call `POST /api/checkout` once with `productUrl`.
 3. It immediately returns a `session_id`.
-4. Tell the user checkout is being prepared and that they will receive an approval email shortly.
+4. Tell the user a checkout has been queued and they will receive an approval email shortly.
 5. Stop. Do not sleep or poll unless the user later asks for a status update.
 
 Request body:
