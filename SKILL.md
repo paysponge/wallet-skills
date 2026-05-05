@@ -445,16 +445,23 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 
 ### URL Checkout Request
 
-Use `POST /api/checkout` to purchase a product from any online store. This endpoint is available to all authenticated Sponge Wallet users.
+Use `POST /api/checkout` to purchase a product from an online store **that supports guest checkout**. This endpoint is available to all authenticated Sponge Wallet users.
+
+**Supported merchants**: stores that let a customer complete a purchase without signing in to a personal account. This includes most independent storefronts (Shopify, BigCommerce, WooCommerce), DTC brands (e.g. nike.com, harmlessharvest.com), and Stripe / Adyen / Checkout.com / Braintree / Square hosted-card flows.
+
+**Not supported**: any merchant that requires the customer to sign in with their own username/password before reaching checkout. Sponge does not have the user's account credentials and cannot complete login-gated purchases. Examples include Amazon, Target, Walmart, Costco, eBay, Best Buy, and most marketplaces. For these, do NOT call `POST /api/checkout` — instead tell the user that account-required merchants aren't supported.
+
+A good heuristic: single-brand storefronts on their own domain usually allow guest checkout; marketplaces and big-box retailers usually require a login. If you're not sure, ask the user before calling.
 
 URL checkout is fire-and-forget:
-1. Call `POST /api/checkout` once with `productUrl`.
-2. It immediately returns a `session_id`.
-3. Tell the user checkout is being prepared and that they will receive an approval email shortly.
-4. Stop. Do not sleep or poll unless the user later asks for a status update.
+1. Confirm the merchant supports guest checkout (no required login). If unsure, ask.
+2. Call `POST /api/checkout` once with `productUrl`.
+3. It immediately returns a `session_id`.
+4. Tell the user checkout is being prepared and that they will receive an approval email shortly.
+5. Stop. Do not sleep or poll unless the user later asks for a status update.
 
 Request body:
-- `productUrl` — product or checkout URL to purchase.
+- `productUrl` — product or guest-checkout URL to purchase. Must be reachable without an account login.
 - `estimatedAmount` — optional fallback amount, such as `"20.00"`, used only if browser pre-check cannot determine the total.
 - `email` — optional checkout email; defaults to the account email.
 - `dryRun` — optional boolean; if true, stops before placing the final order.
@@ -474,6 +481,8 @@ Approval flow:
 - The user receives an email approval link when the checkout is ready.
 - After approval, Sponge resumes the URL checkout and emails completion or failure.
 - The approval window is about 30 minutes before the browser session expires.
+
+If the pre-check fails because the merchant redirected to a login wall, the request is reported as failed with reason `loginRequired`. Treat this as a signal to redirect the user, not as a transient error to retry.
 
 ### Tempo Transfer
 
