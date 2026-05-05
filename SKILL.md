@@ -48,7 +48,8 @@ Wallet & tokens:
 
 Secrets & checkout data:
   POST /api/credit-cards                 -> store encrypted card details (dedicated card tool)
-  POST /api/agents/:id/link-payment-methods/link -> connect Link, then save a Link payment method with required billing/contact info
+  POST /api/agents/:id/link-payment-methods/link -> connect Link, then save a Link payment method with required shipping/contact info
+  POST /api/agents/:id/link-payment-methods/credential -> generate one-time card credentials from a saved Link payment method
   GET  /api/agent-keys                   -> list stored secret metadata
   GET  /api/agent-keys/value             -> retrieve a stored secret value (use `service=credit_card` for cards; this is the only read call needed for personal saved cards)
   DELETE /api/agent-keys                 -> delete saved secret by service (use `service=credit_card` to remove personal saved card)
@@ -120,7 +121,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
-8. **Connect Link for checkout** — use `POST /api/agents/{agentId}/link-payment-methods/link`; first call can start Link login without billing/contact info, saving the selected Link payment method requires billing, phone, and email
+8. **Connect Link for checkout** — use `POST /api/agents/{agentId}/link-payment-methods/link`; first call can start Link login without shipping/contact info, saving the selected Link payment method requires shipping, phone, and email
 9. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 10. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
@@ -293,6 +294,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
 | Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`, `phone`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
+| Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. Body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`, `timeoutMs` |
 | **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
 | Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
@@ -840,6 +842,26 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link
     }
   }'
 ```
+
+#### Generate a one-time credential from saved Link
+
+Use this when a saved Link payment method should produce raw card credentials for a specific checkout. The endpoint uses the saved method's billing address if present, otherwise its shipping address, as the fallback billing details sent to Link. If `linkPaymentMethodId` is omitted, the default saved Link payment method is used. This may wait for the user to approve the Link spend request.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/credential" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount":"49.99",
+    "currency":"USD",
+    "merchantName":"Netflix",
+    "merchantUrl":"https://www.netflix.com",
+    "context":"Monthly subscription"
+  }'
+```
+
+Returns `status:"credential_created"`, saved Link method metadata, and `card` with `pan`, `expiryMonth`, `expiryYear`, optional `cvc`, optional `cardholderName`, and optional `billingAddress`.
 
 ### Cards (Vaulted + Enrolled)
 
