@@ -88,7 +88,8 @@ Banking:
 Trading & shopping:
   POST /api/polymarket                     -> Polymarket prediction market trading
   POST /api/hyperliquid                  -> Hyperliquid perps/spot trading
-  MCP  checkout                           -> checkout from any online store; fire-and-forget approval by email
+  POST /api/checkout/request             -> checkout from any online store; fire-and-forget approval by email
+  GET  /api/checkout/request/:sessionId  -> universal checkout request status
   POST /api/checkout                     -> Amazon checkout (initiate purchase)
   GET  /api/checkout/:sessionId          -> checkout status
   DELETE /api/checkout/:sessionId        -> cancel checkout
@@ -105,7 +106,7 @@ Errors: HTTP status + JSON error message
 
 # Sponge Wallet API - Agent Skills Guide
 
-This skill is **doc-only**. There is no local CLI. It documents the public Sponge Wallet REST API and the public Sponge Wallet MCP `checkout` tool.
+This skill is **doc-only**. There is no local CLI. It documents the public Sponge Wallet REST API.
 
 ## What you can do with Sponge
 
@@ -120,7 +121,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
    - If the target endpoint also requires SIWE auth, call `POST /api/siwe/generate` first and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-6. **Shop from online stores** — use the MCP `checkout` tool for any merchant URL, or the REST `/api/checkout` endpoint for Amazon-specific checkout
+6. **Shop from online stores** — use `POST /api/checkout/request` for any merchant URL, or `POST /api/checkout` for Amazon-specific checkout
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
 8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
@@ -323,6 +324,8 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | List bank transfers | GET | `/api/bank/transfers` | Query: optional `transfer_id`, `agentId` |
 | Crypto onramp | POST | `/api/onramp/crypto` | Body: `wallet_address`; optional: `provider` (auto/stripe/coinbase), `chain` (base/solana/polygon), `fiat_amount`, `fiat_currency` |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
+| Universal checkout request | POST | `/api/checkout/request` | Body: `productUrl`; optional: `estimatedAmount`, `email`, `dryRun`, `productOptions`, `agentId` |
+| Universal checkout status | GET | `/api/checkout/request/{sessionId}` | Query: `agentId` (optional) |
 | Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
 | Checkout status | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
 | Checkout history | GET | `/api/checkout/history` | Query: `agentId`, `limit`, `offset` |
@@ -463,23 +466,27 @@ Purchase products from Amazon using a configured Amazon account.
 
 **Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
 
-### checkout (MCP)
+### Universal Checkout Request
 
-Use the Sponge MCP `checkout` tool to purchase a product from any online store. This tool is available to all authenticated Sponge Wallet users when connected to the Sponge MCP server.
+Use `POST /api/checkout/request` to purchase a product from any online store. This endpoint is available to all authenticated Sponge Wallet users.
 
-`checkout` is fire-and-forget:
-1. Call it once with `product_url`.
+Universal checkout is fire-and-forget:
+1. Call `POST /api/checkout/request` once with `productUrl`.
 2. It immediately returns a `session_id`.
 3. Tell the user checkout is being prepared and that they will receive an approval email shortly.
 4. Stop. Do not sleep or poll unless the user later asks for a status update.
 
-Tool args:
-- `product_url` — product or checkout URL to purchase.
-- `estimated_amount` — optional fallback amount, such as `"20.00"`, used only if browser pre-check cannot determine the total.
+Request body:
+- `productUrl` — product or checkout URL to purchase.
+- `estimatedAmount` — optional fallback amount, such as `"20.00"`, used only if browser pre-check cannot determine the total.
 - `email` — optional checkout email; defaults to the account email.
-- `dry_run` — optional boolean; if true, stops before placing the final order.
-- `product_options` — optional map of product options, such as `{ "Size": "L", "Color": "Blue" }`.
-- `session_id` — optional; pass by itself only when the user explicitly asks for status on an existing session.
+- `dryRun` — optional boolean; if true, stops before placing the final order.
+- `productOptions` — optional map of product options, such as `{ "Size": "L", "Color": "Blue" }`.
+- `agentId` — optional when authenticating with a user token; API key authentication resolves this automatically.
+
+Status:
+- `GET /api/checkout/request/{sessionId}` returns the current universal checkout request status.
+- Only call the status endpoint when the user explicitly asks for an update.
 
 Payment source prerequisites:
 - Sponge Card, Visa Intelligent Commerce compatible card, Basis Theory vaulted card, or Link payment method.
@@ -1146,6 +1153,28 @@ curl -sS -X POST "$SPONGE_API_URL/api/trades/propose" \
     "amount":"500",
     "reason":"Accumulating SOL at current prices"
   }'
+```
+
+### Universal Checkout — Start request
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/checkout/request" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productUrl":"https://merchant.example/products/example",
+    "estimatedAmount":"20.00",
+    "dryRun":true,
+    "productOptions":{"Size":"L","Color":"Blue"}
+  }'
+```
+
+### Universal Checkout — Check request status
+```bash
+curl -sS "$SPONGE_API_URL/api/checkout/request/<sessionId>" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Accept: application/json"
 ```
 
 ### Amazon Checkout — Initiate purchase
