@@ -88,12 +88,12 @@ Banking:
 Trading & shopping:
   POST /api/polymarket                     -> Polymarket prediction market trading
   POST /api/hyperliquid                  -> Hyperliquid perps/spot trading
-  POST /api/checkout/request             -> checkout from any online store; fire-and-forget approval by email
-  GET  /api/checkout/request/:sessionId  -> universal checkout request status
-  POST /api/checkout                     -> Amazon checkout (initiate purchase)
-  GET  /api/checkout/:sessionId          -> checkout status
-  DELETE /api/checkout/:sessionId        -> cancel checkout
-  GET  /api/checkout/history             -> checkout history
+  POST /api/checkout             -> checkout from any online store; fire-and-forget approval by email
+  GET  /api/checkout/:sessionId  -> URL checkout request status
+  POST /api/amazon-checkout              -> Amazon checkout (initiate purchase)
+  GET  /api/amazon-checkout/:sessionId   -> Amazon checkout status
+  DELETE /api/amazon-checkout/:sessionId -> cancel Amazon checkout
+  GET  /api/amazon-checkout/history      -> Amazon checkout history
 
 Auth (one-time setup):
   POST /api/agents/register              -> register (no auth)
@@ -121,7 +121,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
    - If the target endpoint also requires SIWE auth, call `POST /api/siwe/generate` first and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-6. **Shop from online stores** — use `POST /api/checkout/request` for any merchant URL, or `POST /api/checkout` for Amazon-specific checkout
+6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL, or `POST /api/amazon-checkout` for Amazon-specific checkout
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
 8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
@@ -324,11 +324,11 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | List bank transfers | GET | `/api/bank/transfers` | Query: optional `transfer_id`, `agentId` |
 | Crypto onramp | POST | `/api/onramp/crypto` | Body: `wallet_address`; optional: `provider` (auto/stripe/coinbase), `chain` (base/solana/polygon), `fiat_amount`, `fiat_currency` |
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
-| Universal checkout request | POST | `/api/checkout/request` | Body: `productUrl`; optional: `estimatedAmount`, `email`, `dryRun`, `productOptions`, `agentId` |
-| Universal checkout status | GET | `/api/checkout/request/{sessionId}` | Query: `agentId` (optional) |
-| Amazon checkout | POST | `/api/checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
-| Checkout status | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
-| Checkout history | GET | `/api/checkout/history` | Query: `agentId`, `limit`, `offset` |
+| URL checkout request | POST | `/api/checkout` | Body: `productUrl`; optional: `estimatedAmount`, `email`, `dryRun`, `productOptions`, `agentId` |
+| URL checkout status | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
+| Amazon checkout | POST | `/api/amazon-checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
+| Amazon checkout status | GET | `/api/amazon-checkout/{sessionId}` | Query: `agentId` (optional) |
+| Amazon checkout history | GET | `/api/amazon-checkout/history` | Query: `agentId`, `limit`, `offset` |
 | Submit plan | POST | `/api/plans/submit` | Body: `title`, `reasoning`, `steps` (see Planning section) |
 | Approve plan | POST | `/api/plans/approve` | Body: `plan_id` |
 | Propose trade | POST | `/api/trades/propose` | Body: `input_token`, `output_token`, `amount`, `reason` |
@@ -454,9 +454,9 @@ Purchase products from Amazon using a configured Amazon account.
 - A shipping address must be set (inline or via `/api/agents/:id/shipping-addresses`)
 
 **Async workflow:**
-1. Initiate checkout with `POST /api/checkout` — returns a `sessionId`
+1. Initiate checkout with `POST /api/amazon-checkout` — returns a `sessionId`
 2. Wait ~60 seconds for the initial checkout process
-3. Poll `GET /api/checkout/:sessionId` every 10 seconds until status is `completed` or `failed`
+3. Poll `GET /api/amazon-checkout/:sessionId` every 10 seconds until status is `completed` or `failed`
 
 **Status progression:** `pending` → `in_progress` → `completed` | `failed` | `cancelled`
 
@@ -466,12 +466,12 @@ Purchase products from Amazon using a configured Amazon account.
 
 **Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
 
-### Universal Checkout Request
+### URL Checkout Request
 
-Use `POST /api/checkout/request` to purchase a product from any online store. This endpoint is available to all authenticated Sponge Wallet users.
+Use `POST /api/checkout` to purchase a product from any online store. This endpoint is available to all authenticated Sponge Wallet users.
 
-Universal checkout is fire-and-forget:
-1. Call `POST /api/checkout/request` once with `productUrl`.
+URL checkout is fire-and-forget:
+1. Call `POST /api/checkout` once with `productUrl`.
 2. It immediately returns a `session_id`.
 3. Tell the user checkout is being prepared and that they will receive an approval email shortly.
 4. Stop. Do not sleep or poll unless the user later asks for a status update.
@@ -485,7 +485,7 @@ Request body:
 - `agentId` — optional when authenticating with a user token; API key authentication resolves this automatically.
 
 Status:
-- `GET /api/checkout/request/{sessionId}` returns the current universal checkout request status.
+- `GET /api/checkout/{sessionId}` returns the current URL checkout request status.
 - Only call the status endpoint when the user explicitly asks for an update.
 
 Payment source prerequisites:
@@ -495,7 +495,7 @@ Payment source prerequisites:
 Approval flow:
 - Sponge performs a browser pre-check in the background.
 - The user receives an email approval link when the checkout is ready.
-- After approval, Sponge resumes the browser checkout and emails completion or failure.
+- After approval, Sponge resumes the URL checkout and emails completion or failure.
 - The approval window is about 30 minutes before the browser session expires.
 
 ### Tempo Transfer
@@ -1155,9 +1155,9 @@ curl -sS -X POST "$SPONGE_API_URL/api/trades/propose" \
   }'
 ```
 
-### Universal Checkout — Start request
+### URL Checkout — Start request
 ```bash
-curl -sS -X POST "$SPONGE_API_URL/api/checkout/request" \
+curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Content-Type: application/json" \
@@ -1169,9 +1169,9 @@ curl -sS -X POST "$SPONGE_API_URL/api/checkout/request" \
   }'
 ```
 
-### Universal Checkout — Check request status
+### URL Checkout — Check request status
 ```bash
-curl -sS "$SPONGE_API_URL/api/checkout/request/<sessionId>" \
+curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
@@ -1179,7 +1179,7 @@ curl -sS "$SPONGE_API_URL/api/checkout/request/<sessionId>" \
 
 ### Amazon Checkout — Initiate purchase
 ```bash
-curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
+curl -sS -X POST "$SPONGE_API_URL/api/amazon-checkout" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Content-Type: application/json" \
@@ -1192,7 +1192,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
 
 ### Amazon Checkout — Poll status
 ```bash
-curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
+curl -sS "$SPONGE_API_URL/api/amazon-checkout/<sessionId>" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
@@ -1200,7 +1200,7 @@ curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
 
 ### Amazon Checkout — Get history
 ```bash
-curl -sS "$SPONGE_API_URL/api/checkout/history?limit=10" \
+curl -sS "$SPONGE_API_URL/api/amazon-checkout/history?limit=10" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
