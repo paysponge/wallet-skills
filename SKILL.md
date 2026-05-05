@@ -48,6 +48,7 @@ Wallet & tokens:
 
 Secrets & checkout data:
   POST /api/credit-cards                 -> store encrypted card details (dedicated card tool)
+  POST /api/agents/:id/link-payment-methods/link -> connect Link, then save a Link payment method with required shipping info
   GET  /api/agent-keys                   -> list stored secret metadata
   GET  /api/agent-keys/value             -> retrieve a stored secret value (use `service=credit_card` for cards; this is the only read call needed for personal saved cards)
   DELETE /api/agent-keys                 -> delete saved secret by service (use `service=credit_card` to remove personal saved card)
@@ -119,8 +120,9 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
-8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
-9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
+8. **Connect Link for checkout** — use `POST /api/agents/{agentId}/link-payment-methods/link`; first call can start Link login without shipping, saving the selected Link payment method requires shipping
+9. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
+10. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
 
@@ -290,6 +292,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
+| Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can omit `shipping` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`, `phone`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
 | **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
 | Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
@@ -797,6 +800,43 @@ curl -sS "$SPONGE_API_URL/api/agent-keys/value?service=credit_card" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
+```
+
+### Link Payment Methods
+
+Use this when the user wants checkout to use Link. This is a two-step flow: connect Link first, then save the selected Link payment method to the agent. Link login does not require shipping. Saving the Link payment method always requires shipping.
+
+1. Call `POST /api/agents/{agentId}/link-payment-methods/link` with `{}` to start Link login if needed.
+2. If the response status is `link_connection_required`, give the user `verificationUrl` and ask them to approve the Link connection.
+3. Before saving, collect shipping fields: `name`, `line1`, `city`, `state`, `postalCode`, `country`, `phone`, plus optional `line2`.
+4. Call the same endpoint again after approval with `shipping`.
+5. If the response status is `payment_method_selection_required`, ask the user which returned method to use, then call again with `linkPaymentMethodId` and `shipping`.
+6. When the response status is `saved`, checkout can use the saved Link payment method and shipping info.
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "linkPaymentMethodId":"pm_...",
+    "setAsDefault":true,
+    "shipping":{
+      "name":"Jane Doe",
+      "line1":"123 Main St",
+      "city":"San Francisco",
+      "state":"CA",
+      "postalCode":"94105",
+      "country":"US",
+      "phone":"+14155550123"
+    }
+  }'
 ```
 
 ### Cards (Vaulted + Enrolled)
