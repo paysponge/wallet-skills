@@ -293,7 +293,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
-| Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`, `phone`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
+| Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, top-level `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
 | Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. Body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`, `timeoutMs` |
 | **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
@@ -819,7 +819,7 @@ Use this when the user wants checkout to use Link. This is a two-step flow: conn
 
 1. Call `POST /api/agents/{agentId}/link-payment-methods/link` with `{}` to start Link login if needed.
 2. If the response status is `link_connection_required`, give the user `verificationUrl` and ask them to approve the Link connection.
-3. Before saving, collect `email`, `phone`, and shipping fields: `name`, `line1`, `city`, `state`, `postalCode`, `country`, `phone`, plus optional `line2`.
+3. Before saving, collect `email`, top-level `phone`, and shipping fields: `name`, `line1`, `city`, `state`, `postalCode`, `country`, plus optional `line2`.
 4. Call the same endpoint again after approval with `email`, `phone`, and `shipping`.
 5. If the response status is `payment_method_selection_required`, ask the user which returned method to use, then call again with `linkPaymentMethodId`, `email`, `phone`, and `shipping`.
 6. When the response status is `saved`, checkout can use the saved Link payment method and saved address info.
@@ -846,8 +846,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link
       "city":"San Francisco",
       "state":"CA",
       "postalCode":"94105",
-      "country":"US",
-      "phone":"+14155550123"
+      "country":"US"
     }
   }'
 ```
