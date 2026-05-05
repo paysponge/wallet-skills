@@ -15,7 +15,7 @@ Auth:   Authorization: Bearer <SPONGE_API_KEY>
 Ver:    Sponge-Version: 0.2.1  (REQUIRED on every request)
 Docs:   This file is canonical (skills guide + params)
 
-Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + banking + Sponge Card + onramp
+Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + ext_checkout + banking + Sponge Card + onramp
 
 Paid services (search, image gen, scraping, AI, data, etc.):
   GET  /api/discover                     -> Step 1: find services by query/category
@@ -88,6 +88,7 @@ Banking:
 Trading & shopping:
   POST /api/polymarket                     -> Polymarket prediction market trading
   POST /api/hyperliquid                  -> Hyperliquid perps/spot trading
+  MCP  ext_checkout                       -> checkout from any online store; fire-and-forget approval by email
   POST /api/checkout                     -> Amazon checkout (initiate purchase)
   GET  /api/checkout/:sessionId          -> checkout status
   DELETE /api/checkout/:sessionId        -> cancel checkout
@@ -104,7 +105,7 @@ Errors: HTTP status + JSON error message
 
 # Sponge Wallet API - Agent Skills Guide
 
-This skill is **doc-only**. There is no local CLI. It documents the public Sponge Wallet REST API only.
+This skill is **doc-only**. There is no local CLI. It documents the public Sponge Wallet REST API and the public Sponge Wallet MCP `ext_checkout` tool.
 
 ## What you can do with Sponge
 
@@ -119,7 +120,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
    - If the target endpoint also requires SIWE auth, call `POST /api/siwe/generate` first and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-6. **Shop on Amazon** — checkout with configured Amazon account
+6. **Shop from online stores** — use the MCP `ext_checkout` tool for any merchant URL, or the REST `/api/checkout` endpoint for Amazon-specific checkout
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
 8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
@@ -461,6 +462,34 @@ Purchase products from Amazon using a configured Amazon account.
 - `clearCart: true` — clears the Amazon cart before adding the product (default behavior)
 
 **Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
+
+### ext_checkout (MCP)
+
+Use the Sponge MCP `ext_checkout` tool to purchase a product from any online store. This tool is available to all authenticated Sponge Wallet users when connected to the Sponge MCP server.
+
+`ext_checkout` is fire-and-forget:
+1. Call it once with `product_url`.
+2. It immediately returns a `session_id`.
+3. Tell the user checkout is being prepared and that they will receive an approval email shortly.
+4. Stop. Do not sleep or poll unless the user later asks for a status update.
+
+Tool args:
+- `product_url` — product or checkout URL to purchase.
+- `estimated_amount` — optional fallback amount, such as `"20.00"`, used only if browser pre-check cannot determine the total.
+- `email` — optional checkout email; defaults to the account email.
+- `dry_run` — optional boolean; if true, stops before placing the final order.
+- `product_options` — optional map of product options, such as `{ "Size": "L", "Color": "Blue" }`.
+- `session_id` — optional; pass by itself only when the user explicitly asks for status on an existing session.
+
+Payment source prerequisites:
+- Sponge Card, Visa Intelligent Commerce compatible card, Basis Theory vaulted card, or Link payment method.
+- Payment/contact/shipping data must already be configured in Sponge Wallet.
+
+Approval flow:
+- Sponge performs a browser pre-check in the background.
+- The user receives an email approval link when the checkout is ready.
+- After approval, Sponge resumes the browser checkout and emails completion or failure.
+- The approval window is about 30 minutes before the browser session expires.
 
 ### Tempo Transfer
 
