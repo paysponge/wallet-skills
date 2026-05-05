@@ -294,7 +294,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
 | Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, top-level `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
-| Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. Body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`, `timeoutMs` |
+| Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. First call body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`. If approval is required, call again with `spendRequestId` after approval |
 | **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
 | Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
@@ -853,7 +853,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link
 
 #### Generate a one-time credential from saved Link
 
-Use this when a saved Link payment method should produce raw card credentials for a specific checkout. The endpoint uses the saved method's billing address if present, otherwise its shipping address, as the fallback billing details sent to Link. If `linkPaymentMethodId` is omitted, the default saved Link payment method is used. This may wait for the user to approve the Link spend request.
+Use this when a saved Link payment method should produce raw card credentials for a specific checkout. The endpoint uses the saved method's billing address if present, otherwise its shipping address, as the fallback billing details sent to Link. If `linkPaymentMethodId` is omitted, the default saved Link payment method is used. It does not block while waiting for approval: if user approval is needed, it returns `status:"approval_required"` with `approvalUrl` and `spendRequestId`.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/credential" \
@@ -866,6 +866,19 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/cred
     "merchantName":"Netflix",
     "merchantUrl":"https://www.netflix.com",
     "context":"Monthly subscription"
+  }'
+```
+
+If the response is `approval_required`, ask the user to open `approvalUrl` and approve. Then retrieve the credential:
+
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/credential" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "linkPaymentMethodId":"<savedPaymentMethodId from previous response>",
+    "spendRequestId":"<spendRequestId from previous response>"
   }'
 ```
 
