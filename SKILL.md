@@ -90,10 +90,6 @@ Trading & shopping:
   POST /api/hyperliquid                  -> Hyperliquid perps/spot trading
   POST /api/checkout             -> checkout from any online store; fire-and-forget approval by email
   GET  /api/checkout/:sessionId  -> URL checkout request status
-  POST /api/amazon-checkout              -> Amazon checkout (initiate purchase)
-  GET  /api/amazon-checkout/:sessionId   -> Amazon checkout status
-  DELETE /api/amazon-checkout/:sessionId -> cancel Amazon checkout
-  GET  /api/amazon-checkout/history      -> Amazon checkout history
 
 Auth (one-time setup):
   POST /api/agents/register              -> register (no auth)
@@ -121,7 +117,7 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
    - If the target endpoint also requires SIWE auth, call `POST /api/siwe/generate` first and include its output in the fetch headers.
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
-6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL, or `POST /api/amazon-checkout` for Amazon-specific checkout
+6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL
 7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
 8. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 9. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
@@ -326,9 +322,6 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Hyperliquid | POST | `/api/hyperliquid` | Body: `action`, + action-specific params (see below) |
 | URL checkout request | POST | `/api/checkout` | Body: `productUrl`; optional: `estimatedAmount`, `email`, `dryRun`, `productOptions`, `agentId` |
 | URL checkout status | GET | `/api/checkout/{sessionId}` | Query: `agentId` (optional) |
-| Amazon checkout | POST | `/api/amazon-checkout` | Body: `checkoutUrl`, `amazonAccountId`, `shippingAddress`, `dryRun`, `clearCart` |
-| Amazon checkout status | GET | `/api/amazon-checkout/{sessionId}` | Query: `agentId` (optional) |
-| Amazon checkout history | GET | `/api/amazon-checkout/history` | Query: `agentId`, `limit`, `offset` |
 | Submit plan | POST | `/api/plans/submit` | Body: `title`, `reasoning`, `steps` (see Planning section) |
 | Approve plan | POST | `/api/plans/approve` | Body: `plan_id` |
 | Propose trade | POST | `/api/trades/propose` | Body: `input_token`, `output_token`, `amount`, `reason` |
@@ -444,27 +437,6 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 **Deposits:** Use the bridge tool to deposit USDC to Hyperliquid: `bridge(source_chain: "base", destination_chain: "hyperliquid", token: "USDC", amount: "100")`. Your agent's EVM wallet address is your Hyperliquid account.
 
 **Withdrawals:** Use the bridge tool to withdraw USDC from Hyperliquid: `bridge(source_chain: "hyperliquid", destination_chain: "base", token: "USDC", amount: "100")`. USDC is automatically moved from perps to spot before bridging.
-
-### Amazon Checkout
-
-Purchase products from Amazon using a configured Amazon account.
-
-**Prerequisites:**
-- An Amazon account must be configured via the dashboard or `/api/agents/:id/amazon-accounts` endpoints
-- A shipping address must be set (inline or via `/api/agents/:id/shipping-addresses`)
-
-**Async workflow:**
-1. Initiate checkout with `POST /api/amazon-checkout` — returns a `sessionId`
-2. Wait ~60 seconds for the initial checkout process
-3. Poll `GET /api/amazon-checkout/:sessionId` every 10 seconds until status is `completed` or `failed`
-
-**Status progression:** `pending` → `in_progress` → `completed` | `failed` | `cancelled`
-
-**Key options:**
-- `dryRun: true` — stops before placing the order (useful for testing or previewing total cost)
-- `clearCart: true` — clears the Amazon cart before adding the product (default behavior)
-
-**Scopes:** Checkout actions require `amazon_checkout` scope on the API key.
 
 ### URL Checkout Request
 
@@ -1172,35 +1144,6 @@ curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
 ### URL Checkout — Check request status
 ```bash
 curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
-  -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
-  -H "Accept: application/json"
-```
-
-### Amazon Checkout — Initiate purchase
-```bash
-curl -sS -X POST "$SPONGE_API_URL/api/amazon-checkout" \
-  -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "checkoutUrl":"https://www.amazon.com/dp/B0EXAMPLE",
-    "dryRun":true,
-    "clearCart":true
-  }'
-```
-
-### Amazon Checkout — Poll status
-```bash
-curl -sS "$SPONGE_API_URL/api/amazon-checkout/<sessionId>" \
-  -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
-  -H "Accept: application/json"
-```
-
-### Amazon Checkout — Get history
-```bash
-curl -sS "$SPONGE_API_URL/api/amazon-checkout/history?limit=10" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.1" \
   -H "Accept: application/json"
