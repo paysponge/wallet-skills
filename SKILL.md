@@ -1,6 +1,6 @@
 ---
 name: sponge-wallet
-version: 0.2.1
+version: 0.2.2
 
 description: Crypto wallet, token swaps, cross-chain bridges, and access to paid external services (search, image gen, web scraping, AI, and more) via x402 payments.
 homepage: https://wallet.paysponge.com
@@ -9,10 +9,10 @@ metadata: {"openclaw":{"emoji":"\ud83e\uddfd","category":"finance","primaryEnv":
 ---
 
 ```
-SPONGE WALLET API QUICK REFERENCE v0.2.1
+SPONGE WALLET API QUICK REFERENCE v0.2.2
 Base:   https://api.wallet.paysponge.com
 Auth:   Authorization: Bearer <SPONGE_API_KEY>
-Ver:    Sponge-Version: 0.2.1  (REQUIRED on every request)
+Ver:    Sponge-Version: 0.2.2  (REQUIRED on every request)
 Docs:   This file is canonical (skills guide + params)
 
 Capabilities: wallet + swaps (Solana/Base/Ethereum/Polygon/Arbitrum/Tempo) + bridges + payment links + paid external services (x402 + MPP) + trading + shopping + checkout + banking + Sponge Card + onramp
@@ -62,7 +62,7 @@ Cards (vaulted + enrolled):
 
 Sponge Card (beta preview):
   GET  /api/sponge-card/status           -> onboarding/consent/card readiness status
-  POST /api/sponge-card/onboard          -> submit KYC application + consent acknowledgements
+  POST /api/sponge-card/onboard          -> start Rain application from existing Persona KYC + consent acknowledgements
   POST /api/sponge-card/terms            -> accept terms for an existing application
   POST /api/sponge-card/create-card      -> create the virtual Sponge Card after approval
   GET  /api/sponge-card/details          -> encrypted PAN/CVC + secret_key + spending power (decrypt client-side)
@@ -196,7 +196,7 @@ There are two modes:
 **Step 1 — Start registration (agent-first recommended)**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "name":"YourAgentName",
@@ -221,7 +221,7 @@ Claim link format:
 **Step 3 — Poll for completion (standard auth flow only)**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "grantType":"urn:ietf:params:oauth:grant-type:device_code",
@@ -239,7 +239,7 @@ Note: In **agent-first mode**, you already have the `apiKey` from Step 1. The au
 **Phase 1 — Request device code**
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/authorization" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "clientId":"spongewallet-skill"
@@ -249,7 +249,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/authorization" \
 **Phase 2 — Poll for token** (same endpoint as agents)
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "grantType":"urn:ietf:params:oauth:grant-type:device_code",
@@ -265,7 +265,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 **Common headers (include on EVERY request)**
 ```bash
 -H "Authorization: Bearer $SPONGE_API_KEY" \
--H "Sponge-Version: 0.2.1" \
+-H "Sponge-Version: 0.2.2" \
 -H "Content-Type: application/json" \
 -H "Accept: application/json"
 ```
@@ -309,7 +309,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | **Step 3 alt: MPP fetch** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | SIWE signature | POST | `/api/siwe/generate` | Body: `domain`, `uri`; optional: `statement`, `nonce`, `chain_id`, `expiration_time`, `not_before`, `request_id`, `resources` |
 | **Sponge Card status** | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
-| **Onboard Sponge Card** | POST | `/api/sponge-card/onboard` | Body: KYC fields, consent booleans, optional `email`, `phone_*`, `agentId` |
+| **Onboard Sponge Card** | POST | `/api/sponge-card/onboard` | Body: `occupation`, consent booleans, optional `agentId`. Uses existing Persona KYC; does not accept raw SSN/date-of-birth fields |
 | **Accept Sponge Card terms** | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
 | **Create Sponge Card** | POST | `/api/sponge-card/create-card` | Body: `billing`, `email`, `phone`, optional `shipping`, `agentId` |
 | **Sponge Card details** | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
@@ -495,7 +495,7 @@ Send Tempo stablecoins (pathUSD, AlphaUSD, BetaUSD, ThetaUSD) on the Tempo chain
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "to":"0x...",
@@ -510,7 +510,7 @@ For raw contract calls, pass `data` (hex calldata) instead of `token`/`amount`:
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transfers/tempo" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "to":"0xContractAddress...",
@@ -541,7 +541,7 @@ Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -
 The full no-UI flow is:
 
 1. `GET /api/sponge-card/status` - check onboarding and card readiness.
-2. `POST /api/sponge-card/onboard` - submit KYC data and consent acknowledgements.
+2. `POST /api/sponge-card/onboard` - submit the Rain application from existing Persona KYC and record consent acknowledgements.
 3. If status says consent is missing, `POST /api/sponge-card/terms`.
 4. When `ready_for_card_creation` is true, `POST /api/sponge-card/create-card`.
 5. Use `/details`, `/fund`, and `/withdraw` after a card exists.
@@ -551,7 +551,7 @@ The full no-UI flow is:
 ```bash
 curl -sS "$SPONGE_API_URL/api/sponge-card/status?refresh=true" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -559,29 +559,14 @@ Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `comp
 
 #### Onboard for Sponge Card
 
-Submit the same KYC and consent data collected by the dashboard. Bodies use snake_case.
+Submit the Rain application from the user's already-approved Persona KYC and record Sponge consent acknowledgements. Bodies use snake_case. Do not collect or send raw SSN, national ID, birth date, or address fields to this endpoint.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
-    "email":"user@example.com",
-    "first_name":"Ada",
-    "last_name":"Lovelace",
-    "birth_date":"1990-01-01",
-    "national_id":"123456789",
-    "country_of_issue":"US",
-    "phone_country_code":"1",
-    "phone_number":"4155550100",
-    "address":{
-      "line1":"123 Market St",
-      "city":"San Francisco",
-      "region":"CA",
-      "postal_code":"94105",
-      "country_code":"US"
-    },
     "occupation":"Software engineer",
     "e_sign_consent":true,
     "account_opening_privacy_notice":true,
@@ -591,9 +576,9 @@ curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
   }'
 ```
 
-- `email` is optional if the authenticated user email is available.
-- `national_id` is sensitive. Do not log, store, or echo it after submission.
-- `account_opening_privacy_notice` is required when `address.country_code` is `US`.
+- `occupation` is required.
+- `account_opening_privacy_notice` is required when the Persona KYC country is `US`.
+- If Persona KYC is missing, the API returns a 409. Send the user to the Sponge dashboard to complete Persona verification first.
 
 Returns `submitted_application`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, and `message`.
 
@@ -604,7 +589,7 @@ Use this only when `/status` says the Rain application is approved but Sponge co
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/terms" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "e_sign_consent":true,
@@ -622,7 +607,7 @@ Call this after status returns `ready_for_card_creation: true`. If a card alread
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/create-card" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "billing":{
@@ -644,7 +629,7 @@ Returns `created`, `environment`, `card`, and `message`.
 ```bash
 curl -sS "$SPONGE_API_URL/api/sponge-card/details" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -680,7 +665,7 @@ Send USDC from your wallet to the collateral deposit address to increase the car
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/fund" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"amount":"100","chain":"base"}'
 ```
@@ -697,7 +682,7 @@ Pull USDC back from the collateral contract to your wallet. Reduces the card's s
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/withdraw" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"amount":"50.25","chain":"base"}'
 ```
@@ -720,7 +705,7 @@ Create a fiat-to-crypto onramp link to fund your wallet with USDC via card or ba
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/onramp/crypto" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "wallet_address":"0x...",
@@ -743,7 +728,7 @@ MPP works like x402 but settles on Tempo instead of Base/Solana/Ethereum. The as
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "url":"https://paysponge.com/exa/search",
@@ -760,7 +745,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "url":"https://paysponge.com/exa/search",
@@ -798,7 +783,7 @@ Example (store + retrieve):
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/credit-cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "card_number":"4111111111111111",
@@ -813,7 +798,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/credit-cards" \
 
 curl -sS "$SPONGE_API_URL/api/agent-keys/value?service=credit_card" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -831,13 +816,13 @@ Use this when the user wants checkout to use Link. This is a two-step flow: conn
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{}'
 
 curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/link" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "linkPaymentMethodId":"pm_...",
@@ -862,7 +847,7 @@ Use this when a saved Link payment method should produce raw card credentials fo
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/credential" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "amount":"49.99",
@@ -878,7 +863,7 @@ If the response is `approval_required`, ask the user to open `approvalUrl` and a
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/credential" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "linkPaymentMethodId":"<savedPaymentMethodId from previous response>",
@@ -895,7 +880,7 @@ Returns `status:"credential_created"`, saved Link method metadata, and `card` wi
 `POST /api/cards` is the single entry point for retrieving the user's card. It auto-detects the card source:
 
 - **Sponge Card (Rain)** — credit card backed by on-chain collateral. Returns encrypted PAN/CVC + a per-call symmetric key (decrypt client-side with AES-128-GCM).
-- **Basis Theory vaulted card** — a card the user vaulted via the dashboard. Returns a short-lived BT session you must immediately fetch.
+- **Basis Theory vaulted card** — a card the user vaulted via the dashboard. Link users to `https://wallet.paysponge.com/dashboard?tab=cards&addCard=1&cardFlow=basis-theory` to add one through Basis Theory Elements. Returns a short-lived BT session you must immediately fetch.
 
 If the user has only one source enrolled, the endpoint returns that card directly. If both sources are enrolled and `card_type` is omitted, the response is `{ "status": "selection_required", "available_cards": [...] }` — ask the user which they'd like, then re-call with `card_type` set.
 
@@ -903,21 +888,21 @@ If the user has only one source enrolled, the endpoint returns that card directl
 # Auto-detect
 curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{}'
 
 # Explicit Sponge Card
 curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{ "card_type": "rain" }'
 
 # Explicit BT vaulted card with merchant context for spending limits
 curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "card_type": "basis_theory_vaulted",
@@ -947,7 +932,7 @@ Use this when you need card credentials scoped to a specific merchant + amount (
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/virtual-cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "amount":"49.99",
@@ -967,7 +952,7 @@ Use this after checkout to log the outcome of a purchase attempt.
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/card-usage" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "payment_method_id":"pm_123",
@@ -983,7 +968,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/card-usage" \
 ### 1) Register (agents only)
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/agents/register" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "name":"YourAgentName",
@@ -996,7 +981,7 @@ Share the claim URL with your human, then store the `apiKey` immediately (agent-
 ```bash
 curl -sS "$SPONGE_API_URL/api/balances?chain=base" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1004,7 +989,7 @@ curl -sS "$SPONGE_API_URL/api/balances?chain=base" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transfers/evm" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "chain":"base",
@@ -1020,7 +1005,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/transfers/evm" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transactions/swap" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "chain":"solana",
@@ -1035,7 +1020,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/transactions/swap" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transactions/base-swap" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "chain":"base",
@@ -1050,7 +1035,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/transactions/base-swap" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transactions/tempo-swap" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "chain":"tempo",
@@ -1067,7 +1052,7 @@ Available Tempo tokens: `pathUSD`, `AlphaUSD`, `BetaUSD`, `ThetaUSD`, `USDC.e` (
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/transactions/bridge" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "sourceChain":"solana",
@@ -1082,7 +1067,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/transactions/bridge" \
 ```bash
 curl -sS "$SPONGE_API_URL/api/transactions/status/0xabc123...?chain=base" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1090,7 +1075,7 @@ curl -sS "$SPONGE_API_URL/api/transactions/status/0xabc123...?chain=base" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"status"}'
 ```
@@ -1099,7 +1084,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"search_markets","query":"election","limit":5}'
 ```
@@ -1108,7 +1093,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "action":"order",
@@ -1126,7 +1111,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "action":"withdraw",
@@ -1138,7 +1123,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/polymarket" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"status"}'
 ```
@@ -1147,7 +1132,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"ticker","symbol":"BTC/USDC:USDC"}'
 ```
@@ -1156,7 +1141,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "action":"order",
@@ -1172,7 +1157,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"positions"}'
 ```
@@ -1181,7 +1166,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/plans/submit" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "title":"Rebalance to USDC",
@@ -1197,7 +1182,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/plans/submit" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/plans/approve" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"plan_id":"<plan_id>"}'
 ```
@@ -1206,7 +1191,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/plans/approve" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/trades/propose" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "input_token":"USDC",
@@ -1220,7 +1205,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/trades/propose" \
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "productUrl":"https://merchant.example/products/example",
@@ -1234,7 +1219,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/checkout" \
 ```bash
 curl -sS "$SPONGE_API_URL/api/checkout/<sessionId>" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1251,7 +1236,7 @@ Always follow this 3-step workflow: **discover → get service details → fetch
 ```bash
 curl -sS "$SPONGE_API_URL/api/discover?limit=10" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1261,13 +1246,13 @@ Returns available paid services from the catalog. Supports semantic search via t
 # Search by natural language description
 curl -sS "$SPONGE_API_URL/api/discover?query=web+scraping+and+crawling" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 
 # Filter by category
 curl -sS "$SPONGE_API_URL/api/discover?category=search" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1284,7 +1269,7 @@ Once you have a service `id` from step 1 (e.g., `ctg_abc123`), call `GET /api/di
 ```bash
 curl -sS "$SPONGE_API_URL/api/discover/ctg_abc123" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
 ```
 
@@ -1312,7 +1297,7 @@ Pick a protocol from `paymentsProtocolConfig` and construct the URL as: **`baseU
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
-  -H "Sponge-Version: 0.2.1" \
+  -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
     "url":"https://paysponge.com/exa/search",
