@@ -740,7 +740,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
 
 ### Paid Fetch (Unified)
 
-`POST /api/paid/fetch` is the recommended fetch tool — it auto-selects the best payment route (x402 USDC on Base/Solana/Ethereum, or MPP on Tempo with the endpoint's chosen asset) based on the service's supported protocols and your wallet balances.
+`POST /api/paid/fetch` is the recommended fetch tool — it detects payment protocols from the endpoint's 402 challenge, then handles x402 USDC on Base/Solana/Ethereum or MPP on Tempo with the endpoint's chosen asset. If both are advertised, it uses the route with the highest available stablecoin balance.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
