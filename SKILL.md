@@ -555,7 +555,7 @@ curl -sS "$SPONGE_API_URL/api/sponge-card/status?refresh=true" \
   -H "Accept: application/json"
 ```
 
-Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, `cards`, `balances`, and `message`. If `completion_link_url` is present, Rain needs hosted identity/document verification. Have the user complete that URL outside Sponge, then poll status again.
+Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, `cards`, `balances`, and `message`. `balances` uses explicit unit fields such as `spending_power_cents`, `spending_power_usd`, and `spending_power_display`; for user-facing output, use the display fields. If `spending_power_cents` is `250`, that means `$2.50`, not `$250`. If `completion_link_url` is present, Rain needs hosted identity/document verification. Have the user complete that URL outside Sponge, then poll status again.
 
 #### Onboard for Sponge Card
 
@@ -633,7 +633,7 @@ curl -sS "$SPONGE_API_URL/api/sponge-card/details" \
   -H "Accept: application/json"
 ```
 
-Returns `last4`, `expiration_month`, `expiration_year`, `type`, `status`, `spending_power_cents`, `email`, `phone`, plus an encrypted PAN + CVC blob and a one-time `secret_key`. Plaintext card numbers never exist on the backend — **you must decrypt locally** with AES-128-GCM:
+Returns `last4`, `expiration_month`, `expiration_year`, `type`, `status`, `spending_power_cents`, `spending_power_usd`, `spending_power_display`, `email`, `phone`, plus an encrypted PAN + CVC blob and a one-time `secret_key`. For user-facing output, use `spending_power_display`; `spending_power_cents` is an integer in cents, so `250` means `$2.50`, not `$250`. Plaintext card numbers never exist on the backend — **you must decrypt locally** with AES-128-GCM:
 
 ```js
 const { webcrypto } = require("crypto");
@@ -912,7 +912,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   }'
 ```
 
-Response shape (Sponge Card branch): `card_type:"rain"`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `email`, `phone`, `decryption_instructions`.
+Response shape (Sponge Card branch): `card_type:"rain"`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `spending_power_usd`, `spending_power_display`, `email`, `phone`, `decryption_instructions`. For user-facing output, use `spending_power_display`; `spending_power_cents` is an integer in cents, so `250` means `$2.50`, not `$250`.
 
 Response shape (BT branch): `card_type:"basis_theory_vaulted"`, `session_key`, `retrieve_url`, `token_id`, `expires_at`, `card_brand`, `card_last4`, `payment_method_id`, `billing_address`, `email`, `phone`. Immediately fetch the BT card data:
 
