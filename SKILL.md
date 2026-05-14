@@ -450,6 +450,11 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 
 **Signing:** Hyperliquid uses EVM wallet signing (EIP-712). No API keys needed — your agent's existing EVM wallet is used automatically.
 
+**Unified balances:** In `unifiedAccount` or `portfolioMargin` mode, Hyperliquid
+exposes shared USDC collateral through both perps/unified and spot account views.
+Count that USDC once. Do not add spot `USDC` to the perps/unified USDC balance;
+other spot assets such as HYPE remain separate.
+
 **Deposits:** Use the bridge tool to deposit USDC to Hyperliquid: `bridge(source_chain: "base", destination_chain: "hyperliquid", token: "USDC", amount: "100")`. Your agent's EVM wallet address is your Hyperliquid account.
 
 **Withdrawals:** Use the bridge tool to withdraw USDC from Hyperliquid: `bridge(source_chain: "hyperliquid", destination_chain: "base", token: "USDC", amount: "100")`. USDC is automatically moved from perps to spot before bridging.
