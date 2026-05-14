@@ -427,6 +427,7 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 | `ticker` | Current price for a symbol | `symbol` | — |
 | `orderbook` | L2 order book | `symbol` | `limit` |
 | `funding` | Current + predicted funding rates | — | `symbol` |
+| `chart` | Compact Unicode price chart with candle summary | `symbol` | `interval`, `chart_style` |
 | `order` | Place limit/market/stop/TP order | `symbol`, `side`, `type`, `amount` | `price`, `reduce_only`, `trigger_price`, `tp_sl`, `tif` |
 | `cancel` | Cancel an order | `order_id`, `symbol` | — |
 | `cancel_all` | Cancel all open orders | — | `symbol` |
@@ -452,6 +453,8 @@ The `hyperliquid` endpoint is a unified tool for perps/spot trading on Hyperliqu
 **Deposits:** Use the bridge tool to deposit USDC to Hyperliquid: `bridge(source_chain: "base", destination_chain: "hyperliquid", token: "USDC", amount: "100")`. Your agent's EVM wallet address is your Hyperliquid account.
 
 **Withdrawals:** Use the bridge tool to withdraw USDC from Hyperliquid: `bridge(source_chain: "hyperliquid", destination_chain: "base", token: "USDC", amount: "100")`. USDC is automatically moved from perps to spot before bridging.
+
+**Charts:** For chat clients that can only send text reliably, use `action: "chart"` with `chart_style: "sparkline"` and include the compact price line plus Unicode chart in the reply. After a successful Hyperliquid order, preserve any `sparkline` returned by the tool instead of summarizing it away.
 
 ### URL Checkout Request
 
@@ -1146,6 +1149,15 @@ curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
   -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{"action":"ticker","symbol":"BTC/USDC:USDC"}'
+```
+
+### Hyperliquid — Show BTC chart
+```bash
+curl -sS -X POST "$SPONGE_API_URL/api/hyperliquid" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.2" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"chart","symbol":"BTC/USDC:USDC","interval":"15m","chart_style":"sparkline","trace_tool_call":false}'
 ```
 
 ### Hyperliquid — Place a limit order
