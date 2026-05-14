@@ -230,6 +230,10 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
   }'
 ```
 
+Keep polling while the human approves the current claim code. Approval in a browser
+does not write credentials by itself; the still-running poll must receive the
+success response. If polling times out or is interrupted, request a fresh code.
+
 On success, the response includes `apiKey`. Save it to `~/.spongewallet/credentials.json` and use it as `SPONGE_API_KEY`.
 
 Note: In **agent-first mode**, you already have the `apiKey` from Step 1. The auth token will remain pending until the human claims.
@@ -257,6 +261,12 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
     "clientId":"spongewallet-skill"
   }'
 ```
+
+Keep Phase 2 alive until it returns success or a terminal error. Device approval
+can happen in any browser, but credentials are only available to the agent after
+the polling request succeeds and the returned `apiKey` is written to
+`~/.spongewallet/credentials.json`. If the poller was killed, timed out, or lost
+its pending state, start again from Phase 1 and use the new code.
 
 ## Tool Call Pattern
 
