@@ -62,7 +62,7 @@ Cards (vaulted + enrolled):
 
 Sponge Card (beta preview):
   GET  /api/sponge-card/status           -> onboarding/consent/card readiness status
-  POST /api/sponge-card/onboard          -> start Rain application from existing Persona KYC + consent acknowledgements
+  POST /api/sponge-card/onboard          -> start internal KYC verification when needed, then submit the KYC-backed Rain application + consent acknowledgements
   POST /api/sponge-card/terms            -> accept terms for an existing application
   POST /api/sponge-card/create-card      -> create the virtual Sponge Card after approval
   GET  /api/sponge-card/details          -> encrypted PAN/CVC + secret_key + spending power (decrypt client-side)
@@ -78,7 +78,7 @@ Planning & proposals:
   POST /api/trades/propose               -> propose single swap for approval
 
 Banking:
-  POST /api/bank/onboard          -> start KYC, get hosted verification URL
+  POST /api/bank/onboard          -> start/resume internal KYC verification and Bridge terms onboarding
   GET  /api/bank/status           -> check KYC/onboarding status
   POST /api/bank/virtual-account  -> create/get virtual bank account (USD→USDC deposits)
   GET  /api/bank/virtual-account  -> get deposit instructions for a wallet
@@ -319,13 +319,13 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | **Step 3 alt: MPP fetch** | POST | `/api/mpp/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` |
 | SIWE signature | POST | `/api/siwe/generate` | Body: `domain`, `uri`; optional: `statement`, `nonce`, `chain_id`, `expiration_time`, `not_before`, `request_id`, `resources` |
 | **Sponge Card status** | GET | `/api/sponge-card/status` | Query: optional `refresh`, `agentId` |
-| **Onboard Sponge Card** | POST | `/api/sponge-card/onboard` | Body: `occupation`, consent booleans, optional `agentId`. Uses existing Persona KYC; does not accept raw SSN/date-of-birth fields |
+| **Onboard Sponge Card** | POST | `/api/sponge-card/onboard` | Body: optional `redirect_uri`, then `occupation` and consent booleans after KYC approval, optional `agentId`. Returns a KYC verification link first when needed; does not accept raw SSN/date-of-birth fields |
 | **Accept Sponge Card terms** | POST | `/api/sponge-card/terms` | Body: consent booleans, optional `agentId` |
 | **Create Sponge Card** | POST | `/api/sponge-card/create-card` | Body: `billing`, `email`, `phone`, optional `shipping`, `agentId` |
 | **Sponge Card details** | GET | `/api/sponge-card/details` | Query: `agentId` (optional) |
 | **Fund Sponge Card** | POST | `/api/sponge-card/fund` | Body: `amount`, optional `chain`, `agentId` |
 | **Withdraw from Sponge Card** | POST | `/api/sponge-card/withdraw` | Body: `amount`, optional `chain`, `agentId` |
-| Banking onboard | POST | `/api/bank/onboard` | Body: optional `wallet_id`, `redirect_uri`, `customer_type`, `agentId` |
+| Banking onboard | POST | `/api/bank/onboard` | Body: optional `wallet_id`, `redirect_uri`, `customer_type`, `signed_agreement_id`, `agentId`. Returns a KYC verification link first when needed, then a Bridge terms URL |
 | Banking status | GET | `/api/bank/status` | Query: optional `agentId` |
 | Create virtual bank account | POST | `/api/bank/virtual-account` | Body: `wallet_id`, optional `agentId` |
 | Get virtual bank account | GET | `/api/bank/virtual-account` | Query: optional `wallet_id`, `agentId` |
@@ -551,7 +551,7 @@ Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -
 The full no-UI flow is:
 
 1. `GET /api/sponge-card/status` - check onboarding and card readiness.
-2. `POST /api/sponge-card/onboard` - submit the Rain application from existing Persona KYC and record consent acknowledgements.
+2. `POST /api/sponge-card/onboard` - start internal KYC verification when needed, then submit the Rain application and record consent acknowledgements after KYC approval.
 3. If status says consent is missing, `POST /api/sponge-card/terms`.
 4. When `ready_for_card_creation` is true, `POST /api/sponge-card/create-card`.
 5. Use `/details`, `/fund`, and `/withdraw` after a card exists.
@@ -565,11 +565,11 @@ curl -sS "$SPONGE_API_URL/api/sponge-card/status?refresh=true" \
   -H "Accept: application/json"
 ```
 
-Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, `cards`, `balances`, and `message`. `balances` uses explicit unit fields such as `spending_power_cents`, `spending_power_usd`, and `spending_power_display`; for user-facing output, use the display fields. If `spending_power_cents` is `250`, that means `$2.50`, not `$250`. If `completion_link_url` is present, Rain needs hosted identity/document verification. Have the user complete that URL outside Sponge, then poll status again.
+Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, `cards`, `balances`, and `message`. `balances` uses explicit unit fields such as `spending_power_cents`, `spending_power_usd`, and `spending_power_display`; for user-facing output, use the display fields. If `spending_power_cents` is `250`, that means `$2.50`, not `$250`. `completion_link_url` is retained for compatibility and should normally be `null`; use `/onboard` to receive any required KYC verification link.
 
 #### Onboard for Sponge Card
 
-Submit the Rain application from the user's already-approved Persona KYC and record Sponge consent acknowledgements. Bodies use snake_case. Do not collect or send raw SSN, national ID, birth date, or address fields to this endpoint.
+Start Sponge Card onboarding. If internal KYC verification is missing, this endpoint can be called with only optional `redirect_uri` and returns `kyc_url` / `verification_url` for the user to complete. After KYC approval, call it again with `occupation` and consent acknowledgements to submit the Rain application and record Sponge consent. Bodies use snake_case. Do not collect or send raw SSN, national ID, birth date, or address fields to this endpoint.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
@@ -587,10 +587,11 @@ curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
 ```
 
 - `occupation` is required.
-- `account_opening_privacy_notice` is required when the Persona KYC country is `US`.
-- If Persona KYC is missing, the API returns a 409. Send the user to the Sponge dashboard to complete Persona verification first.
+- `occupation` and required consent booleans are required only after KYC approval, when submitting the Rain application.
+- `account_opening_privacy_notice` is required when the KYC country is `US`.
+- If KYC verification is missing, the API returns `submitted_application:false`, an onboarding step indicating KYC verification, and a `kyc_url` / `verification_url`. Have the user complete that link, then call `/onboard` again.
 
-Returns `submitted_application`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, and `message`.
+Returns `submitted_application`, `environment`, `ready_for_card_creation`, `customer`, `completion_link_url`, optional `kyc_url` / `verification_url`, `onboarding_step`, and `message`.
 
 #### Accept Sponge Card terms
 
@@ -1334,7 +1335,7 @@ Receive and send USD via bank accounts over REST.
 
 ### Setup flow
 
-1. **Onboard** — `POST /api/bank/onboard` to start KYC. Returns a hosted URL for identity verification unless the customer is already active.
+1. **Onboard** — `POST /api/bank/onboard` to start or resume KYC. It returns a KYC verification link until internal KYC is approved, then a Bridge terms URL. After the terms redirect, pass `signed_agreement_id` back to `/api/bank/onboard` to finish customer creation unless the customer is already active.
 2. **Check status** — `GET /api/bank/status` to poll KYC progress (pending → approved).
 3. Once approved, you can:
    - **Receive USD as USDC** (on-ramp): create a virtual bank account, get deposit instructions, share them with sender
