@@ -220,19 +220,35 @@ Claim link format:
 
 **Step 3 — Poll for completion (standard auth flow only)**
 ```bash
-curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
-  -H "Sponge-Version: 0.2.2" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grantType":"urn:ietf:params:oauth:grant-type:device_code",
-    "deviceCode":"<deviceCode>",
-    "clientId":"spongewallet-skill"
-  }'
+while true; do
+  response="$(curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
+    -H "Sponge-Version: 0.2.2" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "grantType":"urn:ietf:params:oauth:grant-type:device_code",
+      "deviceCode":"<deviceCode>",
+      "clientId":"spongewallet-skill"
+    }')"
+
+  if printf '%s' "$response" | grep -q '"apiKey"'; then
+    printf '%s\n' "$response"
+    break
+  fi
+
+  if ! printf '%s' "$response" | grep -q '"authorization_pending"'; then
+    printf '%s\n' "$response"
+    exit 1
+  fi
+
+  sleep 5
+done
 ```
 
 Keep polling while the human approves the current claim code. Approval in a browser
 does not write credentials by itself; the still-running poll must receive the
-success response. If polling times out or is interrupted, request a fresh code.
+success response. Do not ask the user to come back and say "done"; this poll
+loop is the completion signal. If polling times out or is interrupted, request a
+fresh code.
 
 On success, the response includes `apiKey`. Save it to `~/.spongewallet/credentials.json` and use it as `SPONGE_API_KEY`.
 
@@ -252,21 +268,36 @@ curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/authorization" \
 
 **Phase 2 — Poll for token** (same endpoint as agents)
 ```bash
-curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
-  -H "Sponge-Version: 0.2.2" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grantType":"urn:ietf:params:oauth:grant-type:device_code",
-    "deviceCode":"<deviceCode>",
-    "clientId":"spongewallet-skill"
-  }'
+while true; do
+  response="$(curl -sS -X POST "$SPONGE_API_URL/api/oauth/device/token" \
+    -H "Sponge-Version: 0.2.2" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "grantType":"urn:ietf:params:oauth:grant-type:device_code",
+      "deviceCode":"<deviceCode>",
+      "clientId":"spongewallet-skill"
+    }')"
+
+  if printf '%s' "$response" | grep -q '"apiKey"'; then
+    printf '%s\n' "$response"
+    break
+  fi
+
+  if ! printf '%s' "$response" | grep -q '"authorization_pending"'; then
+    printf '%s\n' "$response"
+    exit 1
+  fi
+
+  sleep 5
+done
 ```
 
 Keep Phase 2 alive until it returns success or a terminal error. Device approval
 can happen in any browser, but credentials are only available to the agent after
 the polling request succeeds and the returned `apiKey` is written to
-`~/.spongewallet/credentials.json`. If the poller was killed, timed out, or lost
-its pending state, start again from Phase 1 and use the new code.
+`~/.spongewallet/credentials.json`. Do not ask the user to come back and say
+"done"; this poll loop is the completion signal. If the poller was killed, timed
+out, or lost its pending state, start again from Phase 1 and use the new code.
 
 ## Tool Call Pattern
 
