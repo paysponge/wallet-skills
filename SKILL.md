@@ -423,7 +423,7 @@ The `polymarket` endpoint is a unified tool for Polymarket trading, funding, wit
 | `set_allowances` | Approve contracts for trading | — | — |
 | `deposit` | Make Safe-held USDC.e available to the exchange | — | — |
 | `deposit_from_wallet` | Move Polygon wallet USDC.e into the Safe | `amount` | — |
-| `withdraw` | Withdraw USDC.e to Polygon wallet | `amount` | — |
+| `withdraw` | Withdraw pUSD as USDC.e to Polygon wallet | `amount` | — |
 | `withdraw_native` | Withdraw Polygon-native USDC to Polygon wallet | `amount` | — |
 | `redeem` | Redeem settled winning positions | — | `condition_id` |
 
@@ -440,7 +440,7 @@ The `polymarket` endpoint is a unified tool for Polymarket trading, funding, wit
 
 **Provisioning:** Trading and funding calls auto-link Polymarket on first use if the agent has a Polygon/EVM wallet. To sign up explicitly through the tool, call `action: "enable"` (or `action: "signup"`). You can also enable from the dashboard with `POST /api/agents/:id/polymarket/enable`.
 
-**Funding:** For cross-chain funding, use the bridge tool with `destination_chain: "polymarket"` so the route lands as USDC.e in the Polymarket Safe.
+**Funding:** For cross-chain funding, use the bridge tool with `destination_chain: "polymarket"` so the route lands as USDC.e in the Polymarket Safe, then use `deposit` to wrap Safe-held USDC.e into pUSD trading collateral.
 
 **Search:** Use team names, common aliases, or exact slugs for sports markets. For NBA matchup searches, queries like `"Sixers Celtics"` should resolve aliases to current/future sports slugs such as `nba-phi-bos-YYYY-MM-DD`. If `search_markets` misses a sports matchup, search the web or Polymarket team/event pages directly, find the exact Polymarket event/market URL, then pass that slug to `get_market`, `get_market_price`, or `order`.
 
