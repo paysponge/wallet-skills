@@ -768,11 +768,19 @@ Returns a hosted checkout URL. Provider is auto-selected (Stripe first, Coinbase
 
 ### MPP — Machine Payments Protocol
 
-MPP works like x402 but settles on Tempo instead of Base/Solana/Ethereum. The asset is negotiated per endpoint (typically USDC.e). Use the same 3-step discover flow, then call `/api/mpp/fetch` instead of `/api/x402/fetch`.
+MPP works like x402 but settles on Tempo instead of Base/Solana/Ethereum. The asset is negotiated per endpoint (typically USDC.e).
+
+There are two different MPP flows. Choose before calling:
+
+- **One-shot MPP fetch**: use `paid_fetch` or `POST /api/mpp/fetch` for ordinary single paid requests. Use the catalog/proxy URL from discovery, such as `https://api.paysponge.com/mpp/purchase/...`; do not guess direct vendor URLs.
+- **MPP sessions**: use `mpp_session` or `POST /api/mpp/session/start` → `/request` → `/close` only when the endpoint is a confirmed session endpoint, repeated requests should share one payment channel, or the endpoint streams/SSEs. Session requests use the target MPP endpoint URL directly, for example `https://openrouter.mpp.tempo.xyz/v1/chat/completions`.
+
+Do not use `/api/mpp/fetch` for session-intent endpoints. If `paid_fetch` says the endpoint uses MPP session payments, switch to the session flow instead of retrying with different `/mpp/fetch` parameters.
 
 **When to use MPP vs x402:**
 - Use **x402** (`POST /api/x402/fetch`) when paying with USDC on Base/Solana/Ethereum
-- Use **MPP** (`POST /api/mpp/fetch`) when the endpoint settles on Tempo (asset chosen by the endpoint, e.g. USDC.e)
+- Use **one-shot MPP** (`POST /api/mpp/fetch`) when the endpoint settles on Tempo and is not session-based
+- Use **MPP sessions** (`POST /api/mpp/session/*`) for confirmed session endpoints, repeated calls, or streaming flows
 - Use **paid_fetch** (`POST /api/paid/fetch`) to let the system auto-select the best protocol
 
 ```bash
@@ -786,6 +794,37 @@ curl -sS -X POST "$SPONGE_API_URL/api/mpp/fetch" \
     "body":{"query":"best pizza in NYC","text":true},
     "chain":"tempo"
   }'
+```
+
+#### MPP sessions
+
+```bash
+SESSION_ID=$(curl -sS -X POST "$SPONGE_API_URL/api/mpp/session/start" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.2" \
+  -H "Content-Type: application/json" \
+  -d '{"chain":"tempo","max_deposit":"0.50"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["sessionId"])')
+
+curl -sS -X POST "$SPONGE_API_URL/api/mpp/session/request" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.2" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"session_id\":\"$SESSION_ID\",
+    \"url\":\"https://openrouter.mpp.tempo.xyz/v1/chat/completions\",
+    \"method\":\"POST\",
+    \"body\":{
+      \"model\":\"google/gemini-3.5-flash\",
+      \"messages\":[{\"role\":\"user\",\"content\":\"Say hello in one sentence.\"}]
+    }
+  }"
+
+curl -sS -X POST "$SPONGE_API_URL/api/mpp/session/close" \
+  -H "Authorization: Bearer $SPONGE_API_KEY" \
+  -H "Sponge-Version: 0.2.2" \
+  -H "Content-Type: application/json" \
+  -d "{\"session_id\":\"$SESSION_ID\",\"reason\":\"done\"}"
 ```
 
 ### Paid Fetch (Unified)
