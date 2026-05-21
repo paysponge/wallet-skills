@@ -47,7 +47,7 @@ Wallet & tokens:
   POST /api/wallets/withdraw-to-main     -> withdraw to owner
 
 Secrets & checkout data:
-  POST /api/credit-cards                 -> store card details as a normal encrypted agent payment method
+  POST /api/credit-cards                 -> store card details as a normal agent payment method
   GET  /api/credit-cards                 -> list saved card payment methods and the default method
   POST /api/agents/:id/link-payment-methods/link -> connect Link, then save a Link payment method with required shipping/contact info
   POST /api/agents/:id/link-payment-methods/credential -> generate one-time card credentials from a saved Link payment method
@@ -56,8 +56,8 @@ Secrets & checkout data:
   DELETE /api/agent-keys                 -> delete a stored non-card secret by service
   POST /api/agent-keys                   -> store non-card service keys
 
-Cards (vaulted + enrolled):
-  POST /api/cards                        -> fetch the user's card (Sponge Card or vaulted card); auto-detects source
+Cards (stored + enrolled):
+  POST /api/cards                        -> fetch the user's card (Sponge Card or stored card); auto-detects source
   POST /api/virtual-cards                -> issue a per-transaction virtual card scoped to amount and merchant
   POST /api/card-usage                   -> report outcome of a purchase attempt
 
@@ -121,9 +121,9 @@ This skill is **doc-only**. There is no local CLI. It documents the public Spong
 4. **Banking** — KYC onboarding, virtual bank accounts (receive USD as USDC), link bank accounts, send USD to bank (off-ramp USDC)
 5. **Trade on prediction markets and perps** — Polymarket, Hyperliquid
 6. **Shop from online stores** — use `POST /api/checkout` for any merchant URL
-7. **Store encrypted card data for checkout** — use `POST /api/credit-cards`
+7. **Store a credit card for checkout** — use `POST /api/credit-cards`
 8. **Connect Link for checkout** — use `POST /api/agents/{agentId}/link-payment-methods/link`; first call can start Link login without shipping/contact info, saving the selected Link payment method requires shipping, phone, and email
-9. **Use enrolled / vaulted cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
+9. **Use enrolled / stored cards** — fetch the user's card via `POST /api/cards` (auto-detects source), or issue a per-transaction virtual card (`POST /api/virtual-cards`)
 10. **Fiat onramp** — buy crypto with card/bank payment via Stripe or Coinbase
 
 **If a task requires an external capability you don't have** (e.g., generating images, searching the web, scraping a URL, looking up a person's email), use the 3-step discover flow above. There is likely a paid service available for it.
@@ -334,7 +334,7 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Bridge | POST | `/api/transactions/bridge` | Body: `sourceChain`, `destinationChain`, `token`, `amount`, `destinationToken`, `recipientAddress` |
 | Transaction status | GET | `/api/transactions/status/{txHash}` | Query: `chain` |
 | Transaction history | GET | `/api/transactions/history` | Query: `limit`, `chain` |
-| Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
+| Store credit card | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata`, `agentId`. Creates a saved card payment method for checkout |
 | Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, top-level `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
 | Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. First call body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`. If approval is required, call again with `spendRequestId` after approval |
 | **Get card** | POST | `/api/cards` | Body: optional `card_type`, `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
@@ -527,7 +527,7 @@ Status:
 - Only call the status endpoint when the user explicitly asks for an update.
 
 Payment source prerequisites:
-- Sponge Card, Visa Intelligent Commerce compatible card, Basis Theory vaulted card, or Link payment method.
+- Sponge Card, enrolled card, stored card, or Link payment method.
 - Payment/contact/shipping data must already be configured in Sponge Wallet.
 
 Approval flow:
@@ -847,11 +847,11 @@ curl -sS -X POST "$SPONGE_API_URL/api/paid/fetch" \
 
 The `chain` parameter is a hint for which wallet to spend from, not a hard requirement — the system falls back automatically if the endpoint doesn't support the requested chain.
 
-### Credit Card Secret Storage
+### Credit Card Storage
 
-Use `POST /api/credit-cards` for payment card data.
+Use `POST /api/credit-cards` for payment card data. This is the REST/skill path for the MCP `store_credit_card` tool: it securely stores the card as a normal agent payment method.
 
-Do not use `store_key` (or `POST /api/agent-keys`) for cards. Cards are stored as agent payment methods.
+Do not use `store_key` (or `POST /api/agent-keys`) for cards. Cards are stored as agent payment methods, not service keys.
 
 For chat agents, collect card details one field at a time in this exact order:
 1. `card_number`
@@ -866,6 +866,7 @@ Rules:
 - Ask exactly one missing field per message.
 - Re-ask only the field that is missing or invalid.
 - Do not submit the card until all required fields are present.
+- For API-key auth, the key must have the `store_credit_card`/`wallet:write` capability.
 - To inspect saved card metadata, call `GET /api/credit-cards`. To get checkout card credentials, call `POST /api/cards` with the desired `payment_method_id` when needed.
 
 Example (store + list):
@@ -962,14 +963,14 @@ curl -sS -X POST "$SPONGE_API_URL/api/agents/$AGENT_ID/link-payment-methods/cred
 
 Returns `status:"credential_created"`, saved Link method metadata, and `card` with `pan`, `expiryMonth`, `expiryYear`, optional `cvc`, optional `cardholderName`, and optional `billingAddress`.
 
-### Cards (Vaulted + Enrolled)
+### Cards (Stored + Enrolled)
 
 #### Fetch the user's card
 
 `POST /api/cards` is the single entry point for retrieving the user's card. It auto-detects the card source:
 
 - **Sponge Card** — credit card backed by on-chain collateral. Returns encrypted PAN/CVC + a per-call symmetric key (decrypt client-side with AES-128-GCM).
-- **Basis Theory vaulted card** — a card the user vaulted via the dashboard. Link users to `https://wallet.paysponge.com/dashboard?tab=cards&addCard=1&cardFlow=basis-theory` to add one through Basis Theory Elements. Returns a short-lived BT session you must immediately fetch.
+- **Stored card** — a card the user saved via the dashboard or `POST /api/credit-cards`. Link users to `https://wallet.paysponge.com/dashboard?tab=cards&addCard=1&cardFlow=basis-theory` to add one through the dashboard. Returns a short-lived session you must immediately fetch.
 
 If the user has only one source enrolled, the endpoint returns that card directly. If both sources are enrolled and `card_type` is omitted, the response is `{ "status": "selection_required", "available_cards": [...] }` — ask the user which they'd like, then re-call with `card_type` set.
 
@@ -988,13 +989,13 @@ curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Content-Type: application/json" \
   -d '{ "card_type": "sponge_card" }'
 
-# Explicit BT vaulted card with merchant context for spending limits
+# Explicit stored card with merchant context for spending limits
 curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
   -d '{
-    "card_type": "basis_theory_vaulted",
+    "card_type": "stored_card",
     "amount": "49.99",
     "merchant_name": "Netflix",
     "merchant_url": "https://www.netflix.com"
@@ -1003,7 +1004,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/cards" \
 
 Response shape (Sponge Card branch): `card_type`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `spending_power_usd`, `spending_power_display`, `email`, `phone`, `decryption_instructions`. For user-facing output, use `spending_power_display`; `spending_power_cents` is an integer in cents, so `250` means `$2.50`, not `$250`.
 
-Response shape (BT branch): `card_type:"basis_theory_vaulted"`, `session_key`, `retrieve_url`, `token_id`, `expires_at`, `card_brand`, `card_last4`, `payment_method_id`, `billing_address`, `email`, `phone`. Immediately fetch the BT card data:
+Response shape (stored-card branch): `card_type:"stored_card"`, `session_key`, `retrieve_url`, `token_id`, `expires_at`, `card_brand`, `card_last4`, `payment_method_id`, `billing_address`, `email`, `phone`. Immediately fetch the card data:
 
 ```bash
 curl -sS "<retrieve_url>" \
@@ -1016,7 +1017,7 @@ For per-transaction virtual cards, use `/api/virtual-cards` (see below).
 
 #### Issue a per-transaction virtual card
 
-Use this when you need card credentials scoped to a specific merchant + amount (e.g., a one-shot payment). For retrieving an already-vaulted card, prefer `POST /api/cards`.
+Use this when you need card credentials scoped to a specific merchant + amount (e.g., a one-shot payment). For retrieving an already-stored card, prefer `POST /api/cards`.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/virtual-cards" \
