@@ -54,7 +54,7 @@ Secrets & checkout data:
   GET  /api/agent-keys                   -> list stored secret metadata
   GET  /api/agent-keys/value             -> retrieve a stored non-card secret value
   DELETE /api/agent-keys                 -> delete a stored non-card secret by service
-  POST /api/agent-keys                   -> store non-card service keys (`service=credit_card` is rejected)
+  POST /api/agent-keys                   -> store non-card service keys
 
 Cards (vaulted + enrolled):
   POST /api/cards                        -> fetch the user's card (Sponge Card or vaulted card); auto-detects source
@@ -63,7 +63,7 @@ Cards (vaulted + enrolled):
 
 Sponge Card (beta preview):
   GET  /api/sponge-card/status           -> onboarding/consent/card readiness status
-  POST /api/sponge-card/onboard          -> start internal KYC verification when needed, then submit the KYC-backed Rain application + consent acknowledgements
+  POST /api/sponge-card/onboard          -> start internal KYC verification when needed, then submit the KYC-backed Sponge Card application + consent acknowledgements
   POST /api/sponge-card/terms            -> accept terms for an existing application
   POST /api/sponge-card/create-card      -> create the virtual Sponge Card after approval
   GET  /api/sponge-card/details          -> encrypted PAN/CVC + secret_key + spending power (decrypt client-side)
@@ -337,13 +337,13 @@ Use the public REST endpoints documented in this file. Internal-only tools are i
 | Store credit card (encrypted) | POST | `/api/credit-cards` | Body (snake_case): `card_number`, `expiration` OR (`expiry_month` + `expiry_year`), `cvc`, `cardholder_name`, `email`, `billing_address`, `shipping_address` (**phone required**), optional `label`, `metadata` |
 | Add Link payment method | POST | `/api/agents/{agentId}/link-payment-methods/link` | First call can use `{}` to start Link login and may return `link_connection_required` with `verificationUrl`. Saving requires `email`, top-level `phone`, and `shipping` (`name`, `line1`, `city`, `state`, `postalCode`, `country`). Optional: `linkPaymentMethodId`, `setAsDefault`, `clientName`, `billing` |
 | Create Link payment credential | POST | `/api/agents/{agentId}/link-payment-methods/credential` | Generate one-time card credentials from a saved Link payment method. First call body: `amount`, `merchantName`, `merchantUrl`; optional: `linkPaymentMethodId`, `currency`, `context`. If approval is required, call again with `spendRequestId` after approval |
-| **Get card** | POST | `/api/cards` | Body: optional `card_type` (`rain` \| `basis_theory_vaulted`), `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
+| **Get card** | POST | `/api/cards` | Body: optional `card_type`, `payment_method_id`, `amount`, `currency`, `merchant_name`, `merchant_url`, `agentId`. Auto-detects source; returns `selection_required` when both sources are enrolled |
 | Issue virtual card | POST | `/api/virtual-cards` | Body: `amount`, `merchant_name`, `merchant_url`; optional: `currency`, `merchant_country_code`, `description`, `products`, `shipping_address`, `enrollment_id`, `agentId` |
 | Report card usage | POST | `/api/card-usage` | Body: `payment_method_id`, `status` (success/failed/cancelled); optional: `merchant_name`, `merchant_domain`, `amount`, `currency`, `failure_reason`, `agentId` |
-| Store service key (non-card) | POST | `/api/agent-keys` | Body: `service`, `key`, optional `label`, `metadata` (`service=credit_card` is rejected) |
+| Store service key (non-card) | POST | `/api/agent-keys` | Body: `service`, `key`, optional `label`, `metadata` |
 | List stored keys | GET | `/api/agent-keys` | Query: `agentId` (optional) |
-| Get stored key value | GET | `/api/agent-keys/value` | Query: `service` (use `credit_card` for card details) |
-| Delete stored key | DELETE | `/api/agent-keys` | Query: `service` (`credit_card` to delete saved personal card), optional `agentId` |
+| Get stored key value | GET | `/api/agent-keys/value` | Query: `service` |
+| Delete stored key | DELETE | `/api/agent-keys` | Query: `service`, optional `agentId` |
 | **Step 1: Discover services** | GET | `/api/discover` | Query: `type`, `limit`, `offset`, `query`, `category` |
 | **Step 2: Get service details** | GET | `/api/discover/{serviceId}` | — |
 | **Step 3: Paid fetch (unified)** | POST | `/api/paid/fetch` | Body: `url`, `method`, `headers`, `body`, `chain` (preferred wallet chain hint) |
@@ -591,7 +591,7 @@ Environment (dev vs production) is fixed by your API key type: `sponge_test_*` -
 The full no-UI flow is:
 
 1. `GET /api/sponge-card/status` - check onboarding and card readiness.
-2. `POST /api/sponge-card/onboard` - start internal KYC verification when needed, then submit the Rain application and record consent acknowledgements after KYC approval.
+2. `POST /api/sponge-card/onboard` - start internal KYC verification when needed, then submit the Sponge Card application and record consent acknowledgements after KYC approval.
 3. If status says consent is missing, `POST /api/sponge-card/terms`.
 4. When `ready_for_card_creation` is true, `POST /api/sponge-card/create-card`.
 5. Use `/details`, `/fund`, and `/withdraw` after a card exists.
@@ -609,7 +609,7 @@ Returns `onboarded`, `environment`, `ready_for_card_creation`, `customer`, `comp
 
 #### Onboard for Sponge Card
 
-Start Sponge Card onboarding. If internal KYC verification is missing, this endpoint can be called with only optional `redirect_uri` and returns `kyc_url` / `verification_url` for the user to complete. After KYC approval, call it again with `occupation` and consent acknowledgements to submit the Rain application and record Sponge consent. Bodies use snake_case. Do not collect or send raw SSN, national ID, birth date, or address fields to this endpoint.
+Start Sponge Card onboarding. If internal KYC verification is missing, this endpoint can be called with only optional `redirect_uri` and returns `kyc_url` / `verification_url` for the user to complete. After KYC approval, call it again with `occupation` and consent acknowledgements to submit the Sponge Card application and record Sponge consent. Bodies use snake_case. Do not collect or send raw SSN, national ID, birth date, or address fields to this endpoint.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
@@ -627,7 +627,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/onboard" \
 ```
 
 - `occupation` is required.
-- `occupation` and required consent booleans are required only after KYC approval, when submitting the Rain application.
+- `occupation` and required consent booleans are required only after KYC approval, when submitting the Sponge Card application.
 - `account_opening_privacy_notice` is required when the KYC country is `US`.
 - If KYC verification is missing, the API returns `submitted_application:false`, an onboarding step indicating KYC verification, and a `kyc_url` / `verification_url`. Have the user complete that link, then call `/onboard` again.
 
@@ -635,7 +635,7 @@ Returns `submitted_application`, `environment`, `ready_for_card_creation`, `cust
 
 #### Accept Sponge Card terms
 
-Use this only when `/status` says the Rain application is approved but Sponge consent is missing.
+Use this only when `/status` says the Sponge Card application is approved but Sponge consent is missing.
 
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/sponge-card/terms" \
@@ -851,7 +851,7 @@ The `chain` parameter is a hint for which wallet to spend from, not a hard requi
 
 Use `POST /api/credit-cards` for payment card data.
 
-Do not use `store_key` (or `POST /api/agent-keys`) for cards. `service: "credit_card"` is intentionally rejected there.
+Do not use `store_key` (or `POST /api/agent-keys`) for cards. Cards are stored as agent payment methods.
 
 For chat agents, collect card details one field at a time in this exact order:
 1. `card_number`
@@ -866,7 +866,6 @@ Rules:
 - Ask exactly one missing field per message.
 - Re-ask only the field that is missing or invalid.
 - Do not submit the card until all required fields are present.
-- Do not use `get_key_value(service: "credit_card")`; credit cards are payment methods now.
 - To inspect saved card metadata, call `GET /api/credit-cards`. To get checkout card credentials, call `POST /api/cards` with the desired `payment_method_id` when needed.
 
 Example (store + list):
@@ -969,7 +968,7 @@ Returns `status:"credential_created"`, saved Link method metadata, and `card` wi
 
 `POST /api/cards` is the single entry point for retrieving the user's card. It auto-detects the card source:
 
-- **Sponge Card (Rain)** — credit card backed by on-chain collateral. Returns encrypted PAN/CVC + a per-call symmetric key (decrypt client-side with AES-128-GCM).
+- **Sponge Card** — credit card backed by on-chain collateral. Returns encrypted PAN/CVC + a per-call symmetric key (decrypt client-side with AES-128-GCM).
 - **Basis Theory vaulted card** — a card the user vaulted via the dashboard. Link users to `https://wallet.paysponge.com/dashboard?tab=cards&addCard=1&cardFlow=basis-theory` to add one through Basis Theory Elements. Returns a short-lived BT session you must immediately fetch.
 
 If the user has only one source enrolled, the endpoint returns that card directly. If both sources are enrolled and `card_type` is omitted, the response is `{ "status": "selection_required", "available_cards": [...] }` — ask the user which they'd like, then re-call with `card_type` set.
@@ -987,7 +986,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.2" \
   -H "Content-Type: application/json" \
-  -d '{ "card_type": "rain" }'
+  -d '{ "card_type": "sponge_card" }'
 
 # Explicit BT vaulted card with merchant context for spending limits
 curl -sS -X POST "$SPONGE_API_URL/api/cards" \
@@ -1002,7 +1001,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/cards" \
   }'
 ```
 
-Response shape (Sponge Card branch): `card_type:"rain"`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `spending_power_usd`, `spending_power_display`, `email`, `phone`, `decryption_instructions`. For user-facing output, use `spending_power_display`; `spending_power_cents` is an integer in cents, so `250` means `$2.50`, not `$250`.
+Response shape (Sponge Card branch): `card_type`, `last4`, `expiration_month`, `expiration_year`, `secret_key`, `encrypted_pan`, `encrypted_cvc`, `spending_power_cents`, `spending_power_usd`, `spending_power_display`, `email`, `phone`, `decryption_instructions`. For user-facing output, use `spending_power_display`; `spending_power_cents` is an integer in cents, so `250` means `$2.50`, not `$250`.
 
 Response shape (BT branch): `card_type:"basis_theory_vaulted"`, `session_key`, `retrieve_url`, `token_id`, `expires_at`, `card_brand`, `card_last4`, `payment_method_id`, `billing_address`, `email`, `phone`. Immediately fetch the BT card data:
 
