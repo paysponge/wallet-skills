@@ -47,12 +47,13 @@ Wallet & tokens:
   POST /api/wallets/withdraw-to-main     -> withdraw to owner
 
 Secrets & checkout data:
-  POST /api/credit-cards                 -> store encrypted card details (dedicated card tool)
+  POST /api/credit-cards                 -> store card details as a normal encrypted agent payment method
+  GET  /api/credit-cards                 -> list saved card payment methods and the default method
   POST /api/agents/:id/link-payment-methods/link -> connect Link, then save a Link payment method with required shipping/contact info
   POST /api/agents/:id/link-payment-methods/credential -> generate one-time card credentials from a saved Link payment method
   GET  /api/agent-keys                   -> list stored secret metadata
-  GET  /api/agent-keys/value             -> retrieve a stored secret value (use `service=credit_card` for cards; this is the only read call needed for personal saved cards)
-  DELETE /api/agent-keys                 -> delete saved secret by service (use `service=credit_card` to remove personal saved card)
+  GET  /api/agent-keys/value             -> retrieve a stored non-card secret value
+  DELETE /api/agent-keys                 -> delete a stored non-card secret by service
   POST /api/agent-keys                   -> store non-card service keys (`service=credit_card` is rejected)
 
 Cards (vaulted + enrolled):
@@ -865,10 +866,10 @@ Rules:
 - Ask exactly one missing field per message.
 - Re-ask only the field that is missing or invalid.
 - Do not submit the card until all required fields are present.
-- For user-saved personal card retrieval, call only `get_key_value(service: "credit_card")` (or `GET /api/agent-keys/value?service=credit_card`) and return full values.
-- Do not call `get_key_list` for personal card retrieval.
+- Do not use `get_key_value(service: "credit_card")`; credit cards are payment methods now.
+- To inspect saved card metadata, call `GET /api/credit-cards`. To get checkout card credentials, call `POST /api/cards` with the desired `payment_method_id` when needed.
 
-Example (store + retrieve):
+Example (store + list):
 ```bash
 curl -sS -X POST "$SPONGE_API_URL/api/credit-cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
@@ -885,7 +886,7 @@ curl -sS -X POST "$SPONGE_API_URL/api/credit-cards" \
     "label":"personal-visa"
   }'
 
-curl -sS "$SPONGE_API_URL/api/agent-keys/value?service=credit_card" \
+curl -sS "$SPONGE_API_URL/api/credit-cards" \
   -H "Authorization: Bearer $SPONGE_API_KEY" \
   -H "Sponge-Version: 0.2.2" \
   -H "Accept: application/json"
