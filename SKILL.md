@@ -776,6 +776,10 @@ There are two different MPP flows. Choose before calling:
 - **One-shot MPP fetch**: use `paid_fetch` or `POST /api/mpp/fetch` for ordinary single paid requests. Use the catalog/proxy URL from discovery, such as `https://api.paysponge.com/mpp/purchase/...`; do not guess direct vendor URLs.
 - **MPP sessions**: use `mpp_session` or `POST /api/mpp/session/start` → `/request` → `/close` only when the endpoint is a confirmed session endpoint, repeated requests should share one payment channel, or the endpoint streams/SSEs. Session requests use the target MPP endpoint URL directly, for example `https://openrouter.mpp.tempo.xyz/v1/chat/completions`.
 
+For streaming/SSE session requests, set top-level `stream: true` on the `mpp_session` request or `/api/mpp/session/request` body. For OpenAI-compatible endpoints, also set `stream: true` inside the target request `body`.
+
+MCP clients that call `mpp_session` with progress support can receive stream chunks as `notifications/progress.message` when the backend is running with Streamable HTTP SSE responses enabled (`MCP_JSON_RESPONSE=false`). Clients without progress support still receive the final summary.
+
 Do not use `/api/mpp/fetch` for session-intent endpoints. If `paid_fetch` says the endpoint uses MPP session payments, switch to the session flow instead of retrying with different `/mpp/fetch` parameters.
 
 **When to use MPP vs x402:**
